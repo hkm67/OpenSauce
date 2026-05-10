@@ -17,6 +17,13 @@ Start Gunicorn. On Linux/macOS, **bind both IPv4 and IPv6 loopback** so `http://
 gunicorn --bind 0.0.0.0:8000 --bind '[::1]:8000' wsgi:app
 ```
 
+If port `8000` is already in use, pick another port and use the same port in smoke tests:
+
+```bash
+gunicorn --bind 127.0.0.1:8010 wsgi:app
+BASE_URL=http://localhost:8010 ./scripts/smoke.sh
+```
+
 If you only use **`http://127.0.0.1:8000`**, a single bind is enough:
 
 ```bash
@@ -30,6 +37,8 @@ With the server running:
 ```bash
 ./scripts/smoke.sh
 ```
+
+The smoke test checks `/health`, `/projects`, `/user`, `/login`, `/skill`, and `/achieve`. `/skill` fetches a public open GitHub issue, so the machine running the API needs outbound internet access to `api.github.com`.
 
 ### If `/health` looks “blank” in the browser
 
@@ -182,7 +191,7 @@ Content-Type: application/json
 }
 ```
 
-This endpoint does not require authentication. It fetches the selected project URLs and returns SKILL.md prompt content for an agent, plus a temporary achievement token scoped to `/achieve`. If `project_ids` is missing or empty, the API randomly selects up to 3 available projects.
+This endpoint does not require authentication. It fetches the selected project URLs, tries to randomly assign one open unassigned GitHub issue, and returns SKILL.md prompt content for an agent plus a temporary achievement token scoped to `/achieve`. If `project_ids` is missing or empty, the API randomly selects up to 3 available projects.
 
 Returns:
 
@@ -200,9 +209,23 @@ Returns:
     {
       "id": 1,
       "url": "https://github.com/example/project",
-      "description": "A useful open source project"
+      "description": "A useful open source project",
+      "assigned_issue": {
+        "project_id": 1,
+        "project_url": "https://github.com/example/project",
+        "number": 12,
+        "title": "Fix flaky contribution flow",
+        "url": "https://github.com/example/project/issues/12"
+      }
     }
   ],
+  "assigned_issue": {
+    "project_id": 1,
+    "project_url": "https://github.com/example/project",
+    "number": 12,
+    "title": "Fix flaky contribution flow",
+    "url": "https://github.com/example/project/issues/12"
+  },
   "user": {
     "id": 1,
     "name": "Ada Lovelace",
@@ -223,11 +246,64 @@ Content-Type: application/json
 {
   "name": "Open source contribution",
   "url": "https://github.com/example/project/pull/34",
-  "description": "Fixed https://github.com/example/project/issues/12 and opened https://github.com/example/project/pull/34"
+  "description": "Fixed the assigned issue and opened https://github.com/example/project/pull/34"
 }
 ```
 
-Temporary achievement tokens embed the selected project context and are limited to those projects. If a temporary token was generated for exactly one project, `project_id` is filled automatically when omitted. If the token contains multiple projects, include either `project_id` or `project_url` in the `/achieve` request.
+Temporary achievement tokens embed the selected project and assigned issue context. `/achieve` automatically records `project_id`, `issue_url`, `issue_title`, and `issue_number` from the token.
+
+### List User Achievements
+
+```http
+GET /achievements?limit=20&offset=0&sort=recent
+Authorization: Bearer <oauth_token>
+```
+
+Returns the authenticated user's achievements, sorted by most recent by default.
+
+Optional query parameters:
+
+- `limit`: Number of results, `1` to `100`. Defaults to `20`.
+- `offset`: Number of results to skip. Defaults to `0`.
+- `sort`: `recent`, `oldest`, or `name`. Defaults to `recent`.
+- `project_id`: Filter by project.
+- `issue_number`: Filter by GitHub issue number.
+- `q`: Search name, description, PR URL, issue title, issue URL, or project URL.
+
+```json
+{
+  "achievements": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "project_id": 1,
+      "project_url": "https://github.com/example/project",
+      "project_description": "A useful open source project",
+      "name": "Open source contribution",
+      "description": "Fixed the assigned issue",
+      "url": "https://github.com/example/project/pull/34",
+      "issue_url": "https://github.com/example/project/issues/12",
+      "issue_title": "Fix flaky contribution flow",
+      "issue_number": 12,
+      "created_at": "2026-05-10 22:27:28"
+    }
+  ],
+  "pagination": {
+    "limit": 20,
+    "offset": 0,
+    "total": 1,
+    "has_more": false
+  },
+  "filters": {
+    "project_id": null,
+    "issue_number": null,
+    "q": null,
+    "sort": "recent"
+  }
+}
+```
+
+`GET /skills` remains available as a compatibility alias for the achievement list.
 
 ### Achievement Dashboard
 

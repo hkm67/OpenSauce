@@ -506,6 +506,101 @@ def test_skills_endpoint_lists_current_user_achievements(client):
     assert response.get_json()["skills"][0]["name"] == "React"
 
 
+def test_achievements_endpoint_lists_recent_with_pagination_filters_and_sorting(client):
+    create_user(client)
+    token = login(client)
+    project_a = create_project(client, token, "https://github.com/example/a")
+    project_b = create_project(client, token, "https://github.com/example/b")
+    headers = auth_headers(token)
+
+    first = client.post(
+        "/achieve",
+        json={
+            "name": "First contribution",
+            "project_id": project_a["id"],
+            "issue_url": "https://github.com/example/a/issues/1",
+            "issue_title": "First issue",
+            "issue_number": 1,
+            "url": "https://github.com/example/a/pull/1",
+        },
+        headers=headers,
+    )
+    second = client.post(
+        "/achieve",
+        json={
+            "name": "Second contribution",
+            "project_id": project_b["id"],
+            "issue_url": "https://github.com/example/b/issues/2",
+            "issue_title": "Second issue",
+            "issue_number": 2,
+            "url": "https://github.com/example/b/pull/2",
+        },
+        headers=headers,
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+    recent_response = client.get("/achievements", headers=headers)
+    recent_payload = recent_response.get_json()
+    assert recent_response.status_code == 200
+    assert [item["name"] for item in recent_payload["achievements"]] == [
+        "Second contribution",
+        "First contribution",
+    ]
+    assert recent_payload["pagination"] == {
+        "limit": 20,
+        "offset": 0,
+        "total": 2,
+        "has_more": False,
+    }
+
+    paged_response = client.get("/achievements?limit=1&offset=0", headers=headers)
+    assert paged_response.status_code == 200
+    assert paged_response.get_json()["pagination"]["has_more"] is True
+    assert len(paged_response.get_json()["achievements"]) == 1
+
+    project_filter_response = client.get(
+        f"/achievements?project_id={project_a['id']}", headers=headers
+    )
+    assert project_filter_response.status_code == 200
+    assert project_filter_response.get_json()["achievements"][0]["project_id"] == project_a["id"]
+
+    issue_filter_response = client.get("/achievements?issue_number=2", headers=headers)
+    assert issue_filter_response.status_code == 200
+    assert issue_filter_response.get_json()["achievements"][0]["issue_number"] == 2
+
+    search_response = client.get("/achievements?q=Second", headers=headers)
+    assert search_response.status_code == 200
+    assert search_response.get_json()["achievements"][0]["name"] == "Second contribution"
+
+    oldest_response = client.get("/achievements?sort=oldest", headers=headers)
+    assert oldest_response.status_code == 200
+    assert [item["name"] for item in oldest_response.get_json()["achievements"]] == [
+        "First contribution",
+        "Second contribution",
+    ]
+
+
+def test_achievements_endpoint_rejects_invalid_query_params(client):
+    create_user(client)
+    token = login(client)
+    headers = auth_headers(token)
+
+    invalid_limit = client.get("/achievements?limit=0", headers=headers)
+    invalid_offset = client.get("/achievements?offset=-1", headers=headers)
+    invalid_project = client.get("/achievements?project_id=abc", headers=headers)
+    invalid_sort = client.get("/achievements?sort=unknown", headers=headers)
+
+    assert invalid_limit.status_code == 400
+    assert invalid_limit.get_json()["error"] == "limit must be at least 1"
+    assert invalid_offset.status_code == 400
+    assert invalid_offset.get_json()["error"] == "offset must be at least 0"
+    assert invalid_project.status_code == 400
+    assert invalid_project.get_json()["error"] == "project_id must be an integer"
+    assert invalid_sort.status_code == 400
+    assert invalid_sort.get_json()["error"] == "sort must be one of: recent, oldest, name"
+
+
 def test_achieve_accepts_temporary_skill_token(client):
     user = create_user(client)
     token = login(client)

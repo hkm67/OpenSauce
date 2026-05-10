@@ -19,30 +19,146 @@ WINDOWS = {
     "monthly": "-30 days",
 }
 
+ACHIEVEMENT_SORTS = {
+    "recent": "a.created_at DESC, a.id DESC",
+    "oldest": "a.created_at ASC, a.id ASC",
+    "name": "a.name COLLATE NOCASE ASC, a.id DESC",
+}
+
+
+def _parse_int_query(name, default=None, minimum=None, maximum=None):
+    raw_value = request.args.get(name)
+    if raw_value in (None, ""):
+        return default, None
+
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return None, error(f"{name} must be an integer")
+
+    if minimum is not None and value < minimum:
+        return None, error(f"{name} must be at least {minimum}")
+    if maximum is not None and value > maximum:
+        return None, error(f"{name} must be at most {maximum}")
+
+    return value, None
+
+
+@achievements_bp.get("/achievements")
+@require_auth
+def list_achievements():
+    limit, limit_error = _parse_int_query("limit", default=20, minimum=1, maximum=100)
+    if limit_error:
+        return limit_error
+
+    offset, offset_error = _parse_int_query("offset", default=0, minimum=0)
+    if offset_error:
+        return offset_error
+
+    project_id, project_error = _parse_int_query("project_id", minimum=1)
+    if project_error:
+        return project_error
+
+    issue_number, issue_error = _parse_int_query("issue_number", minimum=1)
+    if issue_error:
+        return issue_error
+
+    sort = request.args.get("sort", "recent")
+    if sort not in ACHIEVEMENT_SORTS:
+        return error(f"sort must be one of: {', '.join(ACHIEVEMENT_SORTS)}")
+
+    filters = ["a.user_id = ?"]
+    params = [g.current_user["id"]]
+
+    if project_id is not None:
+        filters.append("a.project_id = ?")
+        params.append(project_id)
+    if issue_number is not None:
+        filters.append("a.issue_number = ?")
+        params.append(issue_number)
+
+    query = request.args.get("q")
+    if query:
+        filters.append(
+            """
+            (
+                a.name LIKE ?
+                OR a.description LIKE ?
+                OR a.url LIKE ?
+                OR a.issue_title LIKE ?
+                OR a.issue_url LIKE ?
+                OR p.url LIKE ?
+            )
+            """
+        )
+        like_query = f"%{query}%"
+        params.extend([like_query] * 6)
+
+    where_clause = " AND ".join(filters)
+    order_clause = ACHIEVEMENT_SORTS[sort]
+
+    with get_connection() as connection:
+        rows = connection.execute(
+            f"""
+            SELECT
+                a.id,
+                a.user_id,
+                a.project_id,
+                p.url AS project_url,
+                p.description AS project_description,
+                a.name,
+                a.description,
+                a.url,
+                a.issue_url,
+                a.issue_title,
+                a.issue_number,
+                a.created_at
+            FROM achievements a
+            LEFT JOIN projects p ON p.id = a.project_id
+            WHERE {where_clause}
+            ORDER BY {order_clause}
+            LIMIT ? OFFSET ?
+            """,
+            (*params, limit, offset),
+        ).fetchall()
+        total = connection.execute(
+            f"""
+            SELECT COUNT(*) AS total
+            FROM achievements a
+            LEFT JOIN projects p ON p.id = a.project_id
+            WHERE {where_clause}
+            """,
+            params,
+        ).fetchone()["total"]
+
+    return jsonify(
+        {
+            "achievements": [row_to_dict(row) for row in rows],
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": total,
+                "has_more": offset + len(rows) < total,
+            },
+            "filters": {
+                "project_id": project_id,
+                "issue_number": issue_number,
+                "q": query,
+                "sort": sort,
+            },
+        }
+    )
+
 
 @achievements_bp.get("/skills")
 @require_auth
 def list_skills():
-    with get_connection() as connection:
-        rows = connection.execute(
-            """
-            SELECT
-                id,
-                name,
-                description,
-                url,
-                issue_url,
-                issue_title,
-                issue_number,
-                created_at
-            FROM achievements
-            WHERE user_id = ?
-            ORDER BY id DESC
-            """,
-            (g.current_user["id"],),
-        ).fetchall()
+    response = list_achievements()
+    if isinstance(response, tuple):
+        return response
 
-    return jsonify({"skills": [row_to_dict(row) for row in rows]})
+    payload = response.get_json()
+    return jsonify({"skills": payload["achievements"], "pagination": payload["pagination"]})
 
 
 def _parse_project_ids(data):
