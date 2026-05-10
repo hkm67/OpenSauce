@@ -2,10 +2,11 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 const navItems = [
-  { label: 'Overview',         path: '/dashboard' },
-  { label: 'My Agents',        path: '/dashboard/agents' },
-  { label: 'Token Allocation', path: '/dashboard/tokens' },
-  { label: 'Contributions',    path: '/dashboard/contributions' },
+  { label: 'Overview',            path: '/dashboard' },
+  { label: 'Project Marketplace', path: '/dashboard/marketplace' },
+  { label: 'My Agents',           path: '/dashboard/agents' },
+  { label: 'Token Allocation',    path: '/dashboard/tokens' },
+  { label: 'Contributions',       path: '/dashboard/contributions' },
 ]
 
 const bottomItems = [
@@ -25,7 +26,7 @@ export default function DashboardLayout({ children }) {
       <aside className="w-52 shrink-0 bg-faded-silver border-r border-cool-gray/40 flex flex-col">
         {/* Logo */}
         <div className="h-12 flex items-center px-4 border-b border-cool-gray/40">
-          <Link to="/" className="text-body text-factory-black flex items-center gap-1.5">
+          <Link to="/dashboard" className="text-body text-factory-black flex items-center gap-1.5">
             <span>🍅</span>
             <span>OpenSauce</span>
           </Link>

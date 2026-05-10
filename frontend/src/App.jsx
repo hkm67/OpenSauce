@@ -11,6 +11,7 @@ import Overview from './pages/dashboard/Overview'
 import Agents from './pages/dashboard/Agents'
 import TokenAllocation from './pages/dashboard/TokenAllocation'
 import Contributions from './pages/dashboard/Contributions'
+import Marketplace from './pages/dashboard/Marketplace'
 import Projects from './pages/projects/Projects'
 import ProjectDetail from './pages/projects/ProjectDetail'
 import Settings from './pages/Settings'
@@ -64,6 +65,9 @@ export default function App() {
           } />
           <Route path="/dashboard/contributions" element={
             <ProtectedRoute><Contributions /></ProtectedRoute>
+          } />
+          <Route path="/dashboard/marketplace" element={
+            <ProtectedRoute><Marketplace /></ProtectedRoute>
           } />
           <Route path="/settings" element={
             <ProtectedRoute><Settings /></ProtectedRoute>
