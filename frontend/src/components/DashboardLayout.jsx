@@ -4,9 +4,8 @@ import { useAuth } from '../contexts/AuthContext'
 const navItems = [
   { label: 'Overview',            path: '/dashboard' },
   { label: 'Project Marketplace', path: '/dashboard/marketplace' },
-  { label: 'My Agents',           path: '/dashboard/agents' },
-  { label: 'Token Allocation',    path: '/dashboard/tokens' },
   { label: 'Contributions',       path: '/dashboard/contributions' },
+  { label: 'My Agents',           path: '/dashboard/agents' },
 ]
 
 const bottomItems = [
