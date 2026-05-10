@@ -1,136 +1,163 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '../../contexts/AuthContext'
+import { Link } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
-import { createActivity } from '../../api/activities'
-import { getProjects } from '../../api/projects'
+import { getDashboard } from '../../api/achievements'
 
-const HISTORY = [
-  { project: 'react/react',           tokens: 2400, prs: 3, date: '2026-05-09', type: 'active' },
-  { project: 'rust-lang/rust',        tokens: 1800, prs: 1, date: '2026-05-08', type: 'active' },
-  { project: 'vercel/next.js',        tokens: 3200, prs: 5, date: '2026-05-06', type: 'history' },
-  { project: 'microsoft/typescript',  tokens: 900,  prs: 1, date: '2026-04-28', type: 'history' },
-]
+function extractRepo(url) {
+  const m = url.match(/github\.com\/(.+)/)
+  return m ? m[1].replace(/\/$/, '') : url
+}
+
+const WINDOWS = ['monthly', 'weekly', 'daily']
+const WINDOW_LABELS = { monthly: 'This month', weekly: 'This week', daily: 'Today' }
 
 export default function Contributions() {
-  const [tab, setTab] = useState('active')
-  const [projects, setProjects] = useState([])
-  const [showContribute, setShowContribute] = useState(false)
-  const [contribForm, setContribForm] = useState({ opensource_id: '', url: '' })
-  const [success, setSuccess] = useState('')
-  const [error, setError] = useState('')
+  const { user } = useAuth()
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [window, setWindow] = useState('monthly')
 
   useEffect(() => {
-    getProjects().then((r) => setProjects(r.data.projects || [])).catch(() => {})
+    getDashboard(50)
+      .then((r) => setData(r.data))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false))
   }, [])
 
-  const handleContribute = async (e) => {
-    e.preventDefault()
-    setError('')
-    try {
-      await createActivity({ opensource_id: parseInt(contribForm.opensource_id), url: contribForm.url })
-      setSuccess('Contribution recorded!')
-      setShowContribute(false)
-      setContribForm({ opensource_id: '', url: '' })
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to record contribution')
-    }
-  }
-
-  const displayed = HISTORY.filter((h) => tab === 'all' || h.type === tab)
-  const totalTokens = HISTORY.reduce((sum, h) => sum + h.tokens, 0)
-  const totalPRs = HISTORY.reduce((sum, h) => sum + h.prs, 0)
+  const windowData = data?.windows?.[window]
+  const topRepos = windowData?.top_repositories || []
+  const topUsers = windowData?.top_users || []
+  const myEntry = topUsers.find((u) => u.username === user?.username)
 
   return (
     <DashboardLayout>
       <div className="p-8">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-start justify-between mb-8">
           <div>
             <h1 className="text-heading font-normal text-factory-black">My Contributions</h1>
-            <p className="text-body-sm text-graphite mt-1">Track your token donations and assisted PRs.</p>
+            <p className="text-body-sm text-graphite mt-1">Community contribution activity powered by AI agents.</p>
           </div>
-          <button onClick={() => setShowContribute(true)} className="btn-primary">+ Record contribution</button>
+          <Link to="/dashboard/marketplace"
+            className="bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors">
+            New Plan
+          </Link>
         </div>
 
-        {success && (
-          <div className="bg-factory-light-gray border border-cool-gray/40 text-factory-black rounded px-4 py-3 text-body-sm mb-6">
-            {success}
-          </div>
-        )}
-
-        {showContribute && (
-          <div className="card mb-6">
-            <h3 className="text-body text-factory-black mb-4">Record a contribution</h3>
-            <form onSubmit={handleContribute} className="space-y-4">
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded px-4 py-3 text-body-sm">{error}</div>
-              )}
-              <div>
-                <label className="label">Project</label>
-                <select className="input" value={contribForm.opensource_id}
-                  onChange={(e) => setContribForm({ ...contribForm, opensource_id: e.target.value })} required>
-                  <option value="">Select a project…</option>
-                  {projects.map((p) => <option key={p.id} value={p.id}>{p.url}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="label">Contribution URL (PR or issue)</label>
-                <input type="url" className="input" placeholder="https://github.com/org/repo/pull/123"
-                  value={contribForm.url} onChange={(e) => setContribForm({ ...contribForm, url: e.target.value })} required />
-              </div>
-              <div className="flex gap-3">
-                <button type="submit" className="btn-primary">Save</button>
-                <button type="button" onClick={() => setShowContribute(false)} className="btn-outline">Cancel</button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Impact summary */}
-        <div className="grid grid-cols-3 gap-3 mb-8">
-          {[
-            { label: 'Total tokens donated', value: totalTokens.toLocaleString() },
-            { label: 'PRs / issues assisted', value: totalPRs },
-            { label: 'Projects contributed',  value: new Set(HISTORY.map(h => h.project)).size },
-          ].map((s) => (
-            <div key={s.label} className="card text-center">
-              <p className="text-caption text-ash-gray mb-1">{s.label}</p>
-              <p className="text-heading font-normal text-factory-black font-mono">{s.value}</p>
+        {/* My stats */}
+        {myEntry && (
+          <div className="card mb-6 flex items-center gap-6">
+            <div>
+              <p className="text-caption text-ash-gray mb-0.5">Your contributions</p>
+              <p className="text-heading font-mono font-normal text-factory-black">{myEntry.contributions}</p>
             </div>
+            <div className="h-8 w-px bg-cool-gray/40" />
+            <div>
+              <p className="text-caption text-ash-gray mb-0.5">Rank</p>
+              <p className="text-heading font-mono font-normal text-factory-black">
+                #{topUsers.findIndex((u) => u.username === user?.username) + 1}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Window tabs */}
+        <div className="flex gap-1 border-b border-cool-gray/30 mb-6">
+          {WINDOWS.map((w) => (
+            <button key={w} onClick={() => setWindow(w)}
+              className={`pb-3 px-1 mr-5 text-body-sm border-b-2 transition-colors ${
+                window === w ? 'border-factory-black text-factory-black' : 'border-transparent text-ash-gray hover:text-factory-black'
+              }`}>
+              {WINDOW_LABELS[w]}
+            </button>
           ))}
         </div>
 
-        {/* List */}
-        <div className="card">
-          <div className="flex gap-1 border-b border-cool-gray/30 mb-5 -mx-4 px-4">
-            {[{ key: 'active', label: 'Active' }, { key: 'history', label: 'History' }, { key: 'all', label: 'All' }].map((t) => (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                className={`pb-3 px-1 mr-5 text-body-sm border-b-2 transition-colors ${
-                  tab === t.key ? 'border-factory-black text-factory-black' : 'border-transparent text-ash-gray hover:text-factory-black'
-                }`}>
-                {t.label}
-              </button>
-            ))}
+        {loading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {[1, 2].map((i) => <div key={i} className="card animate-pulse h-40" />)}
           </div>
-
-          <div className="space-y-0">
-            {displayed.length === 0 ? (
-              <p className="text-body-sm text-ash-gray py-8 text-center">No contributions here yet.</p>
-            ) : displayed.map((item, i) => (
-              <div key={i} className="flex items-center gap-4 py-4 border-b border-cool-gray/30 last:border-0">
-                <div className="w-8 h-8 rounded bg-factory-light-gray flex items-center justify-center text-factory-black text-caption font-mono shrink-0 border border-cool-gray/40">
-                  {item.project[0].toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-body-sm text-factory-black font-mono">{item.project}</p>
-                  <p className="text-caption text-ash-gray">{item.prs} PR{item.prs !== 1 ? 's' : ''} assisted</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-body-sm text-code-orange font-mono">{item.tokens.toLocaleString()} tokens</p>
-                  <p className="text-caption text-ash-gray">{item.date}</p>
-                </div>
+        ) : !data ? (
+          <div className="card text-center py-16">
+            <p className="text-body-sm text-factory-black mb-1">Could not load contribution data.</p>
+            <p className="text-caption text-ash-gray">Make sure the backend is running.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Top Projects */}
+            <div className="border border-cool-gray/40 rounded overflow-hidden">
+              <div className="px-4 py-3 border-b border-cool-gray/40 bg-faded-silver">
+                <p className="text-body-sm text-factory-black">Top Projects</p>
               </div>
-            ))}
+              {topRepos.length === 0 ? (
+                <div className="px-4 py-10 text-center bg-faded-silver">
+                  <p className="text-body-sm text-ash-gray">No contributions recorded yet.</p>
+                </div>
+              ) : (
+                <table className="w-full bg-faded-silver">
+                  <thead>
+                    <tr className="border-b border-cool-gray/40 bg-factory-light-gray">
+                      <th className="px-4 py-2.5 text-caption text-ash-gray font-normal text-left">Project</th>
+                      <th className="px-4 py-2.5 text-caption text-ash-gray font-normal text-right">Contributions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-cool-gray/30">
+                    {topRepos.map((repo) => (
+                      <tr key={repo.project_id} className="hover:bg-factory-light-gray/50 transition-colors">
+                        <td className="px-4 py-3 text-body-sm font-mono text-factory-black">
+                          {extractRepo(repo.project_url)}
+                        </td>
+                        <td className="px-4 py-3 text-body-sm font-mono text-factory-black text-right">
+                          {repo.contributions}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Top Contributors */}
+            <div className="border border-cool-gray/40 rounded overflow-hidden">
+              <div className="px-4 py-3 border-b border-cool-gray/40 bg-faded-silver">
+                <p className="text-body-sm text-factory-black">Top Contributors</p>
+              </div>
+              {topUsers.length === 0 ? (
+                <div className="px-4 py-10 text-center bg-faded-silver">
+                  <p className="text-body-sm text-ash-gray">No contributors yet.</p>
+                </div>
+              ) : (
+                <table className="w-full bg-faded-silver">
+                  <thead>
+                    <tr className="border-b border-cool-gray/40 bg-factory-light-gray">
+                      <th className="px-4 py-2.5 text-caption text-ash-gray font-normal text-left">User</th>
+                      <th className="px-4 py-2.5 text-caption text-ash-gray font-normal text-right">Contributions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-cool-gray/30">
+                    {topUsers.map((u, i) => (
+                      <tr key={u.user_id}
+                        className={`transition-colors ${u.username === user?.username ? 'bg-factory-light-gray' : 'hover:bg-factory-light-gray/50'}`}>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-caption text-ash-gray font-mono w-5 text-right shrink-0">#{i + 1}</span>
+                            <span className="text-body-sm text-factory-black">{u.name || u.username}</span>
+                            {u.username === user?.username && (
+                              <span className="text-caption border border-cool-gray/40 rounded px-1.5 py-0.5 text-ash-gray">you</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-body-sm font-mono text-factory-black text-right">
+                          {u.contributions}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </DashboardLayout>
   )

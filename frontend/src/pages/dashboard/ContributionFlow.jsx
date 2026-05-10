@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { getSkills } from '../../api/achievements'
+import { getSkills, fetchSkillPrompt } from '../../api/achievements'
 
 const BACKEND_URL = 'http://localhost:8000'
 const STEPS = ['Select Projects', 'Set Rules', 'Your Prompt']
@@ -20,12 +20,31 @@ export default function ContributionFlow({ projects, onClose }) {
   const [endTime, setEndTime] = useState('')
   const [maxTokens, setMaxTokens] = useState('')
   const [copied, setCopied] = useState(false)
+  const [skillLoading, setSkillLoading] = useState(false)
+  const [skillError, setSkillError] = useState('')
+  const [fetchedSkillUrl, setFetchedSkillUrl] = useState('')
 
   useEffect(() => {
     getSkills().then((r) => setSkills(r.data.skills || [])).catch(() => {})
   }, [])
 
-  // Determine "recommended" projects by matching skill keywords to project descriptions/urls
+  // Call /skill when entering step 2
+  useEffect(() => {
+    if (step !== 2) return
+    setSkillLoading(true)
+    setSkillError('')
+    fetchSkillPrompt(user?.id, selected)
+      .then((data) => {
+        if (data.error) { setSkillError(data.error); return }
+        const url = new URL(`${BACKEND_URL}/skill`)
+        url.searchParams.set('user_id', user?.id ?? '')
+        selected.forEach((id) => url.searchParams.append('project_id', id))
+        setFetchedSkillUrl(url.toString())
+      })
+      .catch(() => setSkillError('Failed to reach backend. Is the server running?'))
+      .finally(() => setSkillLoading(false))
+  }, [step])
+
   const skillKeywords = skills.flatMap((s) =>
     (s.skill || s.name || '').toLowerCase().split(/[\s,/]+/)
   )
@@ -45,16 +64,10 @@ export default function ContributionFlow({ projects, onClose }) {
 
   const selectedProjects = projects.filter((p) => selected.includes(p.id))
 
-  const skillUrl = (() => {
-    const url = new URL(`${BACKEND_URL}/skill`)
-    url.searchParams.set('user_id', user?.id ?? '')
-    selectedProjects.forEach((p) => url.searchParams.append('project_id', p.id))
-    return url.toString()
-  })()
-
-  const prompt = `Start volunteering work at ${skillUrl}`
+  const prompt = fetchedSkillUrl ? `Start volunteering work at ${fetchedSkillUrl}` : ''
 
   const copyPrompt = () => {
+    if (!prompt) return
     navigator.clipboard.writeText(prompt).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
@@ -219,20 +232,30 @@ export default function ContributionFlow({ projects, onClose }) {
               <p className="text-body-sm text-graphite mb-4">
                 Copy this prompt and paste it into your AI agent to start volunteering work.
               </p>
-              <div className="relative">
-                <pre className="bg-factory-light-gray border border-cool-gray/40 rounded p-4 text-caption text-factory-black font-mono whitespace-pre-wrap break-all leading-relaxed">
-                  {prompt}
-                </pre>
-                <button
-                  onClick={copyPrompt}
-                  className={`absolute top-3 right-3 text-caption border rounded px-2.5 py-1 transition-colors
-                    ${copied
-                      ? 'bg-factory-black text-faded-silver border-factory-black'
-                      : 'bg-faded-silver text-factory-black border-cool-gray/40 hover:border-cool-gray'}`}
-                >
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
+              {skillLoading ? (
+                <div className="bg-factory-light-gray border border-cool-gray/40 rounded p-4 text-caption text-ash-gray font-mono animate-pulse">
+                  Generating prompt…
+                </div>
+              ) : skillError ? (
+                <div className="bg-factory-light-gray border border-cool-gray/40 rounded p-4 text-caption text-red-600 font-mono">
+                  {skillError}
+                </div>
+              ) : (
+                <div className="relative">
+                  <pre className="bg-factory-light-gray border border-cool-gray/40 rounded p-4 text-caption text-factory-black font-mono whitespace-pre-wrap break-all leading-relaxed">
+                    {prompt}
+                  </pre>
+                  <button
+                    onClick={copyPrompt}
+                    className={`absolute top-3 right-3 text-caption border rounded px-2.5 py-1 transition-colors
+                      ${copied
+                        ? 'bg-factory-black text-faded-silver border-factory-black'
+                        : 'bg-faded-silver text-factory-black border-cool-gray/40 hover:border-cool-gray'}`}
+                  >
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -261,7 +284,7 @@ export default function ContributionFlow({ projects, onClose }) {
               onClick={onClose}
               className="bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors"
             >
-              Confirm
+              Done
             </button>
           )}
         </div>
