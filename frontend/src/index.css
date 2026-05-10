@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-factory-light-gray text-factory-black;
+    font-weight: 400;
+  }
+}
+
+@layer components {
+  /* --- Buttons --- */
+
+  /* Primary: dark fill */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded bg-factory-black text-faded-silver px-3 py-1.5 text-body font-normal transition-opacity hover:opacity-80;
+  }
+
+  /* Light fill: for secondary CTAs */
+  .btn-light {
+    @apply inline-flex items-center gap-2 rounded bg-factory-light-gray text-factory-black border border-ash-gray px-3 py-1.5 text-body font-normal transition-colors hover:bg-faded-silver;
+  }
+
+  /* Outlined: transparent + cool-gray border */
+  .btn-outline {
+    @apply inline-flex items-center gap-2 rounded border border-cool-gray bg-transparent text-factory-black px-3 py-1.5 text-body font-normal transition-colors hover:border-graphite;
+  }
+
+  /* Ghost: no border, minimal */
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 bg-transparent text-graphite px-0 py-1.5 text-body font-normal transition-colors hover:text-factory-black;
+  }
+
+  /* --- Cards --- */
+
+  /* Elevated card: faded-silver on light-gray background */
+  .card {
+    @apply bg-faded-silver rounded-card p-4 border border-cool-gray/40;
+  }
+
+  /* Code block / CLI block */
+  .code-block {
+    @apply bg-factory-light-gray rounded-card p-4 font-mono text-body text-factory-black border border-cool-gray/40;
+  }
+
+  /* Dark code block */
+  .code-block-dark {
+    @apply bg-factory-black rounded-card p-4 font-mono text-body text-faded-silver;
+  }
+
+  /* --- Form elements --- */
+  .input {
+    @apply w-full rounded border border-cool-gray bg-faded-silver px-3 py-2 text-body text-factory-black placeholder-cool-gray focus:outline-none focus:border-graphite transition-colors;
+  }
+
+  .label {
+    @apply block text-body-sm font-normal text-graphite mb-1;
+  }
+
+  /* --- Navigation --- */
+  .nav-link {
+    @apply text-body-sm text-factory-black transition-colors hover:text-graphite px-3 py-2;
+  }
+
+  /* --- Sidebar items --- */
+  .sidebar-item {
+    @apply flex items-center gap-2 px-3 py-2 rounded text-body-sm text-graphite transition-colors hover:bg-factory-light-gray hover:text-factory-black;
+  }
+
+  .sidebar-item-active {
+    @apply flex items-center gap-2 px-3 py-2 rounded text-body-sm text-factory-black bg-factory-light-gray;
+  }
+
+  /* --- Utility --- */
+  .section-divider {
+    @apply border-t border-cool-gray/40;
+  }
+
+  .badge-new {
+    @apply font-mono text-caption text-code-orange;
+  }
+
+  /* Dot grid background (factory.ai hero pattern) */
+  .dot-grid {
+    background-image: radial-gradient(circle, #b8b3b0 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+}

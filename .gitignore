@@ -6,3 +6,5 @@
 .DS_Store
 **/.coverage
 **/htmlcov/
+dist/
+node_modules/
