@@ -136,7 +136,7 @@ export default function Overview() {
                 <div className="space-y-2">
                   <Link to="/dashboard/agents" className="block btn-outline w-full text-center py-2 text-body-sm">Add agent server</Link>
                   <Link to="/projects" className="block btn-outline w-full text-center py-2 text-body-sm">Browse projects</Link>
-                  <Link to="/dashboard/tokens" className="block btn-outline w-full text-center py-2 text-body-sm">Set donation rules</Link>
+                  <Link to="/dashboard/marketplace" className="block btn-outline w-full text-center py-2 text-body-sm">Create contribution plan</Link>
                 </div>
               )}
             </div>

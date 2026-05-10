@@ -54,6 +54,26 @@ DEFAULT_PROJECTS = (
         "https://github.com/hkm67/telegram-ai-bot/",
         "Telegram group bot that captures chat context and answers with an Ollama-first LLM agent, Gemini fallback, tool use, and Docker deployment. Has an open issue ready for agent work.",
     ),
+    (
+        "https://github.com/hoppscotch/hoppscotch/",
+        "Open source API development platform for building, testing, and sharing HTTP, GraphQL, and realtime requests. Active TypeScript/Vue project with hundreds of open issues and good first issue candidates.",
+    ),
+    (
+        "https://github.com/treeverse/lakeFS/",
+        "Git-like data version control platform for object storage and data lake workflows. Go and Python ecosystem project with a steady backlog of open issues across SDKs, docs, and integrations.",
+    ),
+    (
+        "https://github.com/directus/directus/",
+        "Open source data platform and headless CMS that turns SQL databases into APIs and admin apps. JavaScript/TypeScript project with many open issues across frontend, API, extensions, and docs.",
+    ),
+    (
+        "https://github.com/caddyserver/caddy/",
+        "Extensible Go web server with automatic HTTPS. Mature infrastructure project with many open issues suitable for focused bug fixes, docs, tests, and module improvements.",
+    ),
+    (
+        "https://github.com/micronaut-projects/micronaut-core/",
+        "JVM framework for building modular microservices and serverless apps. Java project with hundreds of open issues, including curated good first issues and framework enhancements.",
+    ),
 )
 
 

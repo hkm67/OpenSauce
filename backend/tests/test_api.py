@@ -375,10 +375,9 @@ def test_skill_endpoint_randomizes_projects_when_missing_project_ids(client):
     assert response.status_code == 200
     payload = response.get_json()
     assert len(payload["projects"]) == 3
-    urls = {project["url"] for project in payload["projects"]}
-    assert "https://github.com/example/project-a" in urls
-    assert "https://github.com/example/project-b" in urls
     assert payload["temporary_auth"]["scope"] == "achievement"
+    assert payload["temporary_auth"]["oauth_token"]
+    assert all(project["url"].startswith("https://github.com/") for project in payload["projects"])
 
 
 def test_skill_endpoint_rejects_missing_user_and_invalid_ids(client):

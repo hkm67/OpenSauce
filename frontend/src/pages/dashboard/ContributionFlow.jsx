@@ -66,6 +66,7 @@ export default function ContributionFlow({ projects, onClose }) {
   const selectedProjects = projects.filter((p) => selected.includes(p.id))
 
   const agentLink = magicUrl || skillPrompt
+  const cursorPrompt = skillPrompt || (agentLink ? `Start volunteering work at ${agentLink}` : '')
 
   const copyPrompt = () => {
     if (!agentLink) return
@@ -76,9 +77,9 @@ export default function ContributionFlow({ projects, onClose }) {
   }
 
   const openInCursor = () => {
-    if (!prompt) return
-    navigator.clipboard.writeText(prompt)
-    const cursorUrl = `cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(prompt)}`
+    if (!cursorPrompt) return
+    navigator.clipboard.writeText(cursorPrompt)
+    const cursorUrl = `cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(cursorPrompt)}`
     window.open(cursorUrl, '_self')
     setCursorOpened(true)
     setTimeout(() => setCursorOpened(false), 2000)
@@ -298,8 +299,8 @@ export default function ContributionFlow({ projects, onClose }) {
             <div className="flex items-center gap-2">
               <button
                 onClick={openInCursor}
-                disabled={!prompt}
-                className={`btn-outline px-4 py-2 text-body-sm transition-colors ${!prompt ? 'opacity-40 cursor-not-allowed' : ''}`}
+                disabled={!cursorPrompt}
+                className={`btn-outline px-4 py-2 text-body-sm transition-colors ${!cursorPrompt ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 {cursorOpened ? 'Opening…' : 'Open Cursor'}
               </button>
