@@ -5,7 +5,7 @@ import jwt
 from flask import g, jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from .config import SECRET_KEY, TOKEN_EXPIRES_SECONDS
+from .config import AUTH_COOKIE_NAME, SECRET_KEY, TOKEN_EXPIRES_SECONDS
 from .db import get_connection, row_to_dict
 
 
@@ -36,10 +36,14 @@ def require_auth(handler):
     @wraps(handler)
     def wrapper(*args, **kwargs):
         auth_header = request.headers.get("Authorization", "")
-        if not auth_header.startswith("Bearer "):
-            return jsonify({"error": "Missing bearer token"}), 401
+        token = None
+        if auth_header.startswith("Bearer "):
+            token = auth_header.removeprefix("Bearer ").strip()
+        elif AUTH_COOKIE_NAME:
+            token = (request.cookies.get(AUTH_COOKIE_NAME) or "").strip()
 
-        token = auth_header.removeprefix("Bearer ").strip()
+        if not token:
+            return jsonify({"error": "Missing bearer token"}), 401
         try:
             payload = decode_token(token)
         except jwt.ExpiredSignatureError:

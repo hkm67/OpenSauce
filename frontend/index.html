@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenSauce Login Demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      body {
+        align-items: center;
+        background:
+          radial-gradient(circle at top left, rgba(64, 128, 255, 0.22), transparent 34rem),
+          radial-gradient(circle at bottom right, rgba(0, 200, 120, 0.18), transparent 30rem),
+          Canvas;
+        color: CanvasText;
+        display: flex;
+        justify-content: center;
+        margin: 0;
+        min-height: 100vh;
+      }
+
+      main {
+        border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+        border-radius: 24px;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18);
+        max-width: 720px;
+        padding: 40px;
+        width: min(720px, calc(100vw - 32px));
+      }
+
+      h1 {
+        font-size: clamp(2rem, 5vw, 4rem);
+        letter-spacing: -0.06em;
+        line-height: 0.95;
+        margin: 0 0 16px;
+      }
+
+      p {
+        color: color-mix(in srgb, CanvasText 72%, transparent);
+        font-size: 1.05rem;
+        line-height: 1.6;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 28px 0;
+      }
+
+      a.button,
+      button {
+        appearance: none;
+        background: CanvasText;
+        border: 0;
+        border-radius: 999px;
+        color: Canvas;
+        cursor: pointer;
+        display: inline-flex;
+        font: inherit;
+        font-weight: 700;
+        padding: 13px 18px;
+        text-decoration: none;
+      }
+
+      a.secondary,
+      button.secondary {
+        background: transparent;
+        border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+        color: CanvasText;
+      }
+
+      pre {
+        background: color-mix(in srgb, CanvasText 7%, transparent);
+        border-radius: 16px;
+        overflow: auto;
+        padding: 16px;
+        white-space: pre-wrap;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      .status {
+        align-items: center;
+        background: color-mix(in srgb, CanvasText 7%, transparent);
+        border-radius: 16px;
+        display: flex;
+        gap: 10px;
+        margin: 24px 0;
+        padding: 14px 16px;
+      }
+
+      .dot {
+        background: #9ca3af;
+        border-radius: 999px;
+        height: 10px;
+        width: 10px;
+      }
+
+      .dot.on {
+        background: #16a34a;
+      }
+
+      .dot.off {
+        background: #dc2626;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>OpenSauce</h1>
+      <p>
+        Local landing page on <code>localhost:3000</code>. Start GitHub OAuth
+        through the backend on <code>localhost:8000</code>.
+      </p>
+
+      <div class="status">
+        <span class="dot" id="status-dot"></span>
+        <strong id="login-status">Checking login status…</strong>
+      </div>
+
+      <div class="actions">
+        <a class="button" href="http://localhost:8000/oauth/github">
+          Sign in with GitHub
+        </a>
+        <a class="button secondary" href="http://localhost:8000/health">
+          Check API health
+        </a>
+        <button class="secondary" id="logout" type="button">Logout API cookie</button>
+      </div>
+
+      <p>
+        Expected flow: this page sends you to <code>/oauth/github</code>,
+        GitHub returns to <code>/oauth/github/callback</code>, then the API
+        redirects back here using <code>OAUTH_SUCCESS_REDIRECT</code>.
+      </p>
+
+      <h2>Status Details</h2>
+      <pre id="result">Checking API session cookie…</pre>
+    </main>
+
+    <script>
+      const result = document.getElementById("result");
+      const loginStatus = document.getElementById("login-status");
+      const statusDot = document.getElementById("status-dot");
+      const params = new URLSearchParams(window.location.search);
+      const hash = new URLSearchParams(window.location.hash.slice(1));
+
+      async function refreshLoginStatus() {
+        try {
+          const response = await fetch("http://localhost:8000/me", {
+            credentials: "include",
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const user = data.user;
+            statusDot.className = "dot on";
+            loginStatus.textContent = `Logged in as ${user.name} (@${user.username})`;
+            result.textContent = JSON.stringify(
+              {
+                authenticated: true,
+                user,
+              },
+              null,
+              2,
+            );
+            return;
+          }
+
+          statusDot.className = "dot off";
+          loginStatus.textContent = "Not logged in";
+          result.textContent =
+            response.status === 401
+              ? "No active OpenSauce API session cookie found."
+              : `Could not check session: HTTP ${response.status}`;
+        } catch (error) {
+          statusDot.className = "dot off";
+          loginStatus.textContent = "Could not reach API";
+          result.textContent = String(error);
+        }
+      }
+
+      const lines = [];
+      if (params.size) {
+        lines.push("Query parameters:");
+        for (const [key, value] of params) lines.push(`${key}: ${value}`);
+      }
+      if (hash.size) {
+        lines.push("Hash parameters:");
+        for (const [key, value] of hash) {
+          lines.push(`${key}: ${key.includes("token") ? value.slice(0, 24) + "..." : value}`);
+        }
+      }
+
+      if (lines.length) {
+        result.textContent = lines.join("\n");
+        history.replaceState(null, "", window.location.pathname);
+      }
+
+      document.getElementById("logout").addEventListener("click", async () => {
+        const response = await fetch("http://localhost:8000/logout", {
+          method: "POST",
+          credentials: "include",
+        });
+        result.textContent = response.ok
+          ? "Logout request sent to API."
+          : `Logout failed: HTTP ${response.status}`;
+        await refreshLoginStatus();
+      });
+
+      refreshLoginStatus();
+    </script>
+  </body>
+</html>
