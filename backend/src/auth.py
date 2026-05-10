@@ -22,8 +22,21 @@ def create_token(user):
     payload = {
         "sub": str(user["id"]),
         "username": user["username"],
+        "scope": "user",
         "iat": now,
         "exp": now + timedelta(seconds=TOKEN_EXPIRES_SECONDS),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+
+
+def create_temporary_achievement_token(user_id, project_ids, expires_seconds=3600):
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user_id),
+        "scope": "achievement",
+        "project_ids": project_ids,
+        "iat": now,
+        "exp": now + timedelta(seconds=expires_seconds),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
@@ -32,31 +45,69 @@ def decode_token(token):
     return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
 
 
+def _get_bearer_payload():
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None, (jsonify({"error": "Missing bearer token"}), 401)
+
+    token = auth_header.removeprefix("Bearer ").strip()
+    try:
+        return decode_token(token), None
+    except jwt.ExpiredSignatureError:
+        return None, (jsonify({"error": "Token expired"}), 401)
+    except jwt.InvalidTokenError:
+        return None, (jsonify({"error": "Invalid token"}), 401)
+
+
+def _load_user(user_id):
+    with get_connection() as connection:
+        user = connection.execute(
+            "SELECT id, name, username FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    return row_to_dict(user)
+
+
 def require_auth(handler):
     @wraps(handler)
     def wrapper(*args, **kwargs):
-        auth_header = request.headers.get("Authorization", "")
-        if not auth_header.startswith("Bearer "):
-            return jsonify({"error": "Missing bearer token"}), 401
+        payload, auth_error = _get_bearer_payload()
+        if auth_error:
+            return auth_error
 
-        token = auth_header.removeprefix("Bearer ").strip()
-        try:
-            payload = decode_token(token)
-        except jwt.ExpiredSignatureError:
-            return jsonify({"error": "Token expired"}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({"error": "Invalid token"}), 401
+        if payload.get("scope", "user") != "user":
+            return jsonify({"error": "Token cannot access this endpoint"}), 403
 
-        with get_connection() as connection:
-            user = connection.execute(
-                "SELECT id, name, username FROM users WHERE id = ?",
-                (payload["sub"],),
-            ).fetchone()
-
+        user = _load_user(payload["sub"])
         if user is None:
             return jsonify({"error": "User not found"}), 401
 
-        g.current_user = row_to_dict(user)
+        g.current_user = user
+        g.auth_scope = payload.get("scope", "user")
+        g.token_payload = payload
+        return handler(*args, **kwargs)
+
+    return wrapper
+
+
+def require_achievement_auth(handler):
+    @wraps(handler)
+    def wrapper(*args, **kwargs):
+        payload, auth_error = _get_bearer_payload()
+        if auth_error:
+            return auth_error
+
+        scope = payload.get("scope", "user")
+        if scope not in {"user", "achievement"}:
+            return jsonify({"error": "Token cannot record achievements"}), 403
+
+        user = _load_user(payload["sub"])
+        if user is None:
+            return jsonify({"error": "User not found"}), 401
+
+        g.current_user = user
+        g.auth_scope = scope
+        g.token_payload = payload
         return handler(*args, **kwargs)
 
     return wrapper
