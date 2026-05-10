@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     name TEXT NOT NULL,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    github_id INTEGER UNIQUE,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -69,9 +70,19 @@ def transaction():
         connection.close()
 
 
+def _ensure_github_id_column(connection):
+    cols = {row[1] for row in connection.execute("PRAGMA table_info(users)")}
+    if "github_id" not in cols:
+        connection.execute("ALTER TABLE users ADD COLUMN github_id INTEGER")
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_github_id ON users(github_id)"
+    )
+
+
 def init_db():
     with transaction() as connection:
         connection.executescript(SCHEMA)
+        _ensure_github_id_column(connection)
         existing_columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(achievements)")
         }
