@@ -1,12 +1,14 @@
 import base64
 import json
+import random
 from urllib.parse import urlencode
 
 from flask import Blueprint, Response, g, jsonify, request
 
 from ..auth import create_temporary_achievement_token, require_auth, require_achievement_auth
 from ..db import get_connection, row_to_dict, transaction
-from ..github import fetch_random_open_issue
+from ..github import fetch_open_issues, fetch_random_open_issue
+from .. import llm
 from ..responses import error, require_fields
 
 
@@ -399,6 +401,86 @@ def _build_magic_token(user_id, project_ids):
     return base64.urlsafe_b64encode(payload).decode("utf-8").rstrip("=")
 
 
+def _user_skill_tags(connection, user_id, limit=20):
+    """Recent achievement names for a user, used as a lightweight skills hint."""
+    rows = connection.execute(
+        """
+        SELECT name FROM achievements
+        WHERE user_id = ? AND name IS NOT NULL AND name != ''
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (user_id, limit),
+    ).fetchall()
+    return [row["name"] for row in rows]
+
+
+def _pick_best_issue(projects, user_skills):
+    """Use CLōD to choose the best-fit open issue across the selected projects.
+
+    Falls back to ``fetch_random_open_issue`` when the LLM is unavailable, the
+    response is malformed, or there are no candidate issues to score.
+    """
+    if not llm.is_enabled():
+        return fetch_random_open_issue(projects)
+
+    candidates = []
+    for project in projects:
+        candidates.extend(fetch_open_issues(project))
+
+    if not candidates:
+        return None
+    if len(candidates) < 2:
+        return candidates[0]
+
+    sample = candidates[:25]
+    issue_lines = "\n".join(
+        f"{idx}. [{issue['project_url']}] #{issue['number']} {issue['title']}"
+        for idx, issue in enumerate(sample)
+    )
+    skills_hint = ", ".join(user_skills) if user_skills else "no past contributions yet"
+
+    response = llm.chat_json(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "You match open source contributors to GitHub issues. "
+                    "Pick the single best issue for the contributor. "
+                    "Respond ONLY with JSON of shape "
+                    "{\"chosen_index\": <int>, \"reason\": <one short sentence>}."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Contributor's recent skills/tags: {skills_hint}.\n\n"
+                    f"Open issues (index. [repo] #number title):\n{issue_lines}\n\n"
+                    "Choose the index of the best fit and explain why in one sentence."
+                ),
+            },
+        ],
+        max_tokens=400,
+    )
+
+    if not isinstance(response, dict):
+        return random.choice(sample)
+
+    try:
+        idx = int(response.get("chosen_index"))
+    except (TypeError, ValueError):
+        return random.choice(sample)
+
+    if not 0 <= idx < len(sample):
+        return random.choice(sample)
+
+    chosen = dict(sample[idx])
+    reason = response.get("reason")
+    if isinstance(reason, str) and reason.strip():
+        chosen["match_reason"] = reason.strip()
+    return chosen
+
+
 def _build_skill_response_payload(data):
     missing = require_fields(data, ["user_id"])
     if missing:
@@ -447,7 +529,9 @@ def _build_skill_response_payload(data):
         return None, error("No projects available to generate a skill prompt", 404)
 
     project_data = [row_to_dict(project) for project in projects]
-    assigned_issue = fetch_random_open_issue(project_data)
+    with get_connection() as connection:
+        user_skills = _user_skill_tags(connection, data["user_id"])
+    assigned_issue = _pick_best_issue(project_data, user_skills)
     if not assigned_issue:
         return None, error(
             "No open unassigned GitHub issue available for selected projects"

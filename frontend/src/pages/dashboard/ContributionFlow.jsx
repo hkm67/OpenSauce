@@ -249,6 +249,27 @@ export default function ContributionFlow({ projects, onClose }) {
               <p className="text-body-sm text-graphite mb-4">
                 Copy this prompt and paste it into your AI agent to start volunteering work.
               </p>
+              {assignedIssue && (
+                <div className="mb-4 p-3 border border-cool-gray/40 rounded bg-factory-light-gray">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-caption text-ash-gray font-mono">Assigned issue</span>
+                    <a
+                      href={assignedIssue.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-body-sm text-factory-black underline truncate"
+                    >
+                      #{assignedIssue.number} {assignedIssue.title}
+                    </a>
+                  </div>
+                  {assignedIssue.match_reason && (
+                    <p className="text-caption text-graphite mt-1.5">
+                      <span className="font-mono text-ash-gray">Why this one →</span>{' '}
+                      {assignedIssue.match_reason}
+                    </p>
+                  )}
+                </div>
+              )}
               {skillLoading ? (
                 <div className="bg-factory-light-gray border border-cool-gray/40 rounded p-4 text-caption text-ash-gray font-mono animate-pulse">
                   Generating prompt…

@@ -11,6 +11,7 @@ import pytest
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("CLOD_API_KEY", "")
 
     for module_name in list(sys.modules):
         if module_name == "src" or module_name.startswith("src."):
@@ -352,6 +353,96 @@ def test_skill_endpoint_embeds_random_open_issue(client, monkeypatch):
     assert "Assigned Issue" in payload["prompt"]
     assert "Fix flaky contribution flow" in payload["prompt"]
     assert "https://github.com/example/project/issues/42" in payload["prompt"]
+
+
+def test_skill_endpoint_uses_llm_match_reason_when_clod_enabled(client, monkeypatch):
+    user = create_user(client)
+    token = login(client)
+    project = create_project(client, token)
+
+    monkeypatch.setattr(
+        "src.routes.achievements.llm.is_enabled",
+        lambda: True,
+    )
+    fake_issues = [
+        {
+            "project_id": project["id"],
+            "project_url": project["url"],
+            "number": 7,
+            "title": "Bump pytest to 8.x",
+            "url": "https://github.com/example/project/issues/7",
+        },
+        {
+            "project_id": project["id"],
+            "project_url": project["url"],
+            "number": 11,
+            "title": "Add SSO via OIDC",
+            "url": "https://github.com/example/project/issues/11",
+        },
+    ]
+    monkeypatch.setattr(
+        "src.routes.achievements.fetch_open_issues",
+        lambda project_row: fake_issues,
+    )
+    monkeypatch.setattr(
+        "src.routes.achievements.llm.chat_json",
+        lambda messages, **_: {
+            "chosen_index": 1,
+            "reason": "matches their auth experience",
+        },
+    )
+
+    response = client.post(
+        "/skill",
+        json={"user_id": user["id"], "project_ids": [project["id"]]},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["assigned_issue"]["number"] == 11
+    assert payload["assigned_issue"]["match_reason"] == "matches their auth experience"
+
+
+def test_skill_endpoint_falls_back_to_random_when_llm_returns_garbage(client, monkeypatch):
+    user = create_user(client)
+    token = login(client)
+    project = create_project(client, token)
+
+    fake_issues = [
+        {
+            "project_id": project["id"],
+            "project_url": project["url"],
+            "number": 7,
+            "title": "Only issue available",
+            "url": "https://github.com/example/project/issues/7",
+        },
+        {
+            "project_id": project["id"],
+            "project_url": project["url"],
+            "number": 9,
+            "title": "Second issue",
+            "url": "https://github.com/example/project/issues/9",
+        },
+    ]
+    monkeypatch.setattr("src.routes.achievements.llm.is_enabled", lambda: True)
+    monkeypatch.setattr(
+        "src.routes.achievements.fetch_open_issues",
+        lambda project_row: fake_issues,
+    )
+    monkeypatch.setattr(
+        "src.routes.achievements.llm.chat_json",
+        lambda messages, **_: None,
+    )
+
+    response = client.post(
+        "/skill",
+        json={"user_id": user["id"], "project_ids": [project["id"]]},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["assigned_issue"]["number"] in {7, 9}
+    assert "match_reason" not in payload["assigned_issue"]
 
 
 def test_skill_endpoint_returns_400_when_no_open_issue(client, monkeypatch):
