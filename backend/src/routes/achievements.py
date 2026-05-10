@@ -8,6 +8,13 @@ from ..responses import error, require_fields
 achievements_bp = Blueprint("achievements", __name__)
 
 
+WINDOWS = {
+    "daily": "-1 day",
+    "weekly": "-7 days",
+    "monthly": "-30 days",
+}
+
+
 def _parse_project_ids(data):
     project_ids = data.get("project_ids", data.get("project_id", []))
     if project_ids in (None, ""):
@@ -25,7 +32,8 @@ def _parse_project_ids(data):
 
 def _build_skill_prompt(projects, achievement_token):
     project_list = "\n".join(
-        f"- {project['url']} - {project['description']}" for project in projects
+        f"- Project {project['id']}: {project['url']} - {project['description']}"
+        for project in projects
     )
     project_urls = "\n".join(f"- {project['url']}" for project in projects)
 
@@ -61,6 +69,7 @@ Content-Type: application/json
 
 {{
   "name": "Open source contribution",
+  "url": "<merge-request-url>",
   "description": "Fixed <issue-url> in <project-url> and opened <merge-request-url>"
 }}
 ```
@@ -72,11 +81,98 @@ Content-Type: application/json
 - Do not take over work that another contributor is already handling.
 - Keep the change small enough for maintainers to review comfortably.
 - If a selected project is unavailable, try the next selected project.
+- The achievement token already contains the selected project context. If this token lists more than one project, include either `"project_id": <selected-project-id>` or `"project_url": "<selected-project-url>"` in the final `/achieve` call.
 
 ## Project URLs
 
 {project_urls}
 """
+
+
+def _parse_top_n():
+    try:
+        top_n = int(request.args.get("top_n", "10"))
+    except ValueError:
+        return None
+
+    if top_n < 1 or top_n > 100:
+        return None
+    return top_n
+
+
+def _top_repositories(connection, since_modifier, top_n):
+    rows = connection.execute(
+        """
+        SELECT
+            p.id AS project_id,
+            p.url AS project_url,
+            p.description AS project_description,
+            COUNT(a.id) AS contributions
+        FROM achievements a
+        JOIN projects p ON p.id = a.project_id
+        WHERE a.created_at >= datetime('now', ?)
+        GROUP BY p.id, p.url, p.description
+        ORDER BY contributions DESC, p.id ASC
+        LIMIT ?
+        """,
+        (since_modifier, top_n),
+    ).fetchall()
+    return [row_to_dict(row) for row in rows]
+
+
+def _top_users(connection, since_modifier, top_n):
+    rows = connection.execute(
+        """
+        SELECT
+            u.id AS user_id,
+            u.name,
+            u.username,
+            COUNT(a.id) AS contributions
+        FROM achievements a
+        JOIN users u ON u.id = a.user_id
+        WHERE a.created_at >= datetime('now', ?)
+        GROUP BY u.id, u.name, u.username
+        ORDER BY contributions DESC, u.id ASC
+        LIMIT ?
+        """,
+        (since_modifier, top_n),
+    ).fetchall()
+    return [row_to_dict(row) for row in rows]
+
+
+def _resolve_project_id_from_token(data):
+    token_projects = g.token_payload.get("projects", [])
+    token_project_ids = g.token_payload.get("project_ids", [])
+
+    if not token_projects and token_project_ids:
+        token_projects = [{"id": project_id} for project_id in token_project_ids]
+
+    project_id = data.get("project_id")
+    if project_id is not None:
+        try:
+            project_id = int(project_id)
+        except (TypeError, ValueError):
+            return None, error("project_id must be an integer")
+    elif data.get("project_url"):
+        matching_projects = [
+            project
+            for project in token_projects
+            if project.get("url") == data.get("project_url")
+        ]
+        if not matching_projects:
+            return None, error("Temporary token cannot record work for this project", 403)
+        project_id = matching_projects[0]["id"]
+    elif len(token_projects) == 1:
+        project_id = token_projects[0]["id"]
+    else:
+        return None, error(
+            "project_id or project_url is required for multi-project temporary tokens"
+        )
+
+    if project_id not in [project["id"] for project in token_projects]:
+        return None, error("Temporary token cannot record work for this project", 403)
+
+    return project_id, None
 
 
 @achievements_bp.route("/skill", methods=["GET", "POST"])
@@ -136,9 +232,8 @@ def get_skill_prompt():
     if not projects:
         return error("No projects available to generate a skill prompt", 404)
 
-    selected_project_ids = [project["id"] for project in projects]
-    token = create_temporary_achievement_token(data["user_id"], selected_project_ids)
     project_data = [row_to_dict(project) for project in projects]
+    token = create_temporary_achievement_token(data["user_id"], project_data)
     return jsonify(
         {
             "prompt_filename": "SKILL.md",
@@ -155,6 +250,25 @@ def get_skill_prompt():
     )
 
 
+@achievements_bp.get("/achievement/dashboard")
+@achievements_bp.get("/achievements/dashboard")
+def get_achievement_dashboard():
+    top_n = _parse_top_n()
+    if top_n is None:
+        return error("top_n must be an integer between 1 and 100")
+
+    with get_connection() as connection:
+        dashboard = {
+            window: {
+                "top_repositories": _top_repositories(connection, modifier, top_n),
+                "top_users": _top_users(connection, modifier, top_n),
+            }
+            for window, modifier in WINDOWS.items()
+        }
+
+    return jsonify({"top_n": top_n, "windows": dashboard})
+
+
 @achievements_bp.post("/achieve")
 @require_achievement_auth
 def add_achievement():
@@ -163,17 +277,43 @@ def add_achievement():
     if missing:
         return error(missing)
 
+    if g.auth_scope == "achievement":
+        project_id, project_error = _resolve_project_id_from_token(data)
+        if project_error:
+            return project_error
+    else:
+        project_id = data.get("project_id")
+        if project_id is not None:
+            try:
+                project_id = int(project_id)
+            except (TypeError, ValueError):
+                return error("project_id must be an integer")
+
     with transaction() as connection:
+        if project_id is not None:
+            project = connection.execute(
+                "SELECT id FROM projects WHERE id = ?",
+                (project_id,),
+            ).fetchone()
+            if project is None:
+                return error("Project not found", 404)
+
         cursor = connection.execute(
             """
-            INSERT INTO achievements (user_id, name, description)
-            VALUES (?, ?, ?)
+            INSERT INTO achievements (user_id, project_id, name, description, url)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (g.current_user["id"], data["name"], data.get("description")),
+            (
+                g.current_user["id"],
+                project_id,
+                data["name"],
+                data.get("description"),
+                data.get("url"),
+            ),
         )
         achievement = connection.execute(
             """
-            SELECT id, user_id, name, description, created_at
+            SELECT id, user_id, project_id, name, description, url, created_at
             FROM achievements
             WHERE id = ?
             """,
