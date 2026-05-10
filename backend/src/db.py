@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS achievements (
     name TEXT NOT NULL,
     description TEXT,
     url TEXT,
+    issue_url TEXT,
+    issue_title TEXT,
+    issue_number INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
@@ -47,6 +50,9 @@ CREATE TABLE IF NOT EXISTS achievements (
 MIGRATIONS = (
     "ALTER TABLE achievements ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL",
     "ALTER TABLE achievements ADD COLUMN url TEXT",
+    "ALTER TABLE achievements ADD COLUMN issue_url TEXT",
+    "ALTER TABLE achievements ADD COLUMN issue_title TEXT",
+    "ALTER TABLE achievements ADD COLUMN issue_number INTEGER",
 )
 
 DEFAULT_PROJECTS = (
@@ -73,6 +79,26 @@ DEFAULT_PROJECTS = (
     (
         "https://github.com/micronaut-projects/micronaut-core/",
         "JVM framework for building modular microservices and serverless apps. Java project with hundreds of open issues, including curated good first issues and framework enhancements.",
+    ),
+    (
+        "https://github.com/milvus-io/milvus/",
+        "Open source vector database built for embedding similarity search and AI applications. Go/Python/C++ project with hundreds of open issues across clients, storage, indexing, and docs.",
+    ),
+    (
+        "https://github.com/strapi/strapi/",
+        "Open source headless CMS for building customizable content APIs. JavaScript/TypeScript project with a large issue queue across admin UI, plugins, REST/GraphQL APIs, and documentation.",
+    ),
+    (
+        "https://github.com/meilisearch/meilisearch/",
+        "Fast open source search engine focused on relevance and developer experience. Rust project with active issues around search behavior, API ergonomics, integrations, and docs.",
+    ),
+    (
+        "https://github.com/novuhq/novu/",
+        "Open source notification infrastructure for product teams. TypeScript project with active issues across workflow orchestration, providers, dashboard UX, and SDKs.",
+    ),
+    (
+        "https://github.com/apache/superset/",
+        "Apache Superset is a modern data exploration and visualization platform. Python/TypeScript project with hundreds of open issues across charts, dashboards, SQL Lab, and integrations.",
     ),
 )
 
@@ -109,8 +135,10 @@ def _ensure_github_id_column(connection):
 def _seed_default_projects(connection):
     connection.executemany(
         """
-        INSERT OR IGNORE INTO projects (url, description)
+        INSERT INTO projects (url, description)
         VALUES (?, ?)
+        ON CONFLICT(url) DO UPDATE SET
+            description = excluded.description
         """,
         DEFAULT_PROJECTS,
     )

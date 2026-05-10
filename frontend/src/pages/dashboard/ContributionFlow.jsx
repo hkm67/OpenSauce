@@ -24,6 +24,7 @@ export default function ContributionFlow({ projects, onClose }) {
   const [skillError, setSkillError] = useState('')
   const [skillPrompt, setSkillPrompt] = useState('')
   const [magicUrl, setMagicUrl] = useState('')
+  const [assignedIssue, setAssignedIssue] = useState(null)
 
   useEffect(() => {
     getSkills().then((r) => setSkills(r.data.skills || [])).catch(() => {})
@@ -36,11 +37,13 @@ export default function ContributionFlow({ projects, onClose }) {
     setSkillError('')
     setSkillPrompt('')
     setMagicUrl('')
+    setAssignedIssue(null)
     fetchSkillPrompt(user?.id, selected)
       .then((data) => {
         if (data.error) { setSkillError(data.error); return }
         setSkillPrompt(data.prompt || '')
         setMagicUrl(data.magic_url || '')
+        setAssignedIssue(data.assigned_issue || null)
       })
       .catch(() => setSkillError('Failed to reach backend. Is the server running?'))
       .finally(() => setSkillLoading(false))
@@ -65,12 +68,18 @@ export default function ContributionFlow({ projects, onClose }) {
 
   const selectedProjects = projects.filter((p) => selected.includes(p.id))
 
-  const agentLink = magicUrl || skillPrompt
-  const cursorPrompt = skillPrompt || (agentLink ? `Start volunteering work at ${agentLink}` : '')
+  const selectedRepoNames = selectedProjects.map((p) => extractRepo(p.url)).join(', ')
+  const issueLine = assignedIssue
+    ? `\n\nAssigned issue: #${assignedIssue.number} ${assignedIssue.title}\n${assignedIssue.url}`
+    : ''
+  const agentPrompt = magicUrl
+    ? `Start an OpenSauce contribution for ${selectedRepoNames || 'the selected open source project'}.${issueLine}\n\nOpen this magic link to fetch the generated SKILL.md, then follow its instructions exactly:\n${magicUrl}\n\nWhen the work is complete, use the temporary token in SKILL.md to report the pull request back to OpenSauce.`
+    : skillPrompt
+  const cursorPrompt = agentPrompt
 
   const copyPrompt = () => {
-    if (!agentLink) return
-    navigator.clipboard.writeText(agentLink).then(() => {
+    if (!agentPrompt) return
+    navigator.clipboard.writeText(agentPrompt).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
@@ -241,7 +250,7 @@ export default function ContributionFlow({ projects, onClose }) {
           {step === 2 && (
             <div>
               <p className="text-body-sm text-graphite mb-4">
-                Copy this magic link and paste it into your AI agent to start volunteering work.
+                Copy this prompt and paste it into your AI agent to start volunteering work.
               </p>
               {skillLoading ? (
                 <div className="bg-factory-light-gray border border-cool-gray/40 rounded p-4 text-caption text-ash-gray font-mono animate-pulse">
@@ -254,9 +263,9 @@ export default function ContributionFlow({ projects, onClose }) {
               ) : (
                 <div className="relative">
                   <pre className="bg-factory-light-gray border border-cool-gray/40 rounded p-4 text-caption text-factory-black font-mono whitespace-pre-wrap break-all leading-relaxed">
-                    {agentLink}
+                    {agentPrompt}
                   </pre>
-                  {skillPrompt && (
+                  {magicUrl && (
                     <p className="text-caption text-ash-gray mt-3">
                       The link opens a generated SKILL.md with a temporary token scoped to the selected project.
                     </p>
