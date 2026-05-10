@@ -51,6 +51,15 @@ docker compose up --build
 
 The API will be available at `http://localhost:8000`.
 
+## Run Tests
+
+```bash
+pip install -r requirements.txt
+python3 -m pytest
+python3 -m coverage run --source=src -m pytest tests/test_api.py
+python3 -m coverage report -m
+```
+
 ## Environment Variables
 
 Copy `.env.example` to `.env` in this directory (`backend/.env`). `python-dotenv` loads it automatically.
@@ -161,25 +170,98 @@ Content-Type: application/json
 
 You can also delete by `url`.
 
-### Get Skills
+### Generate Skill Prompt
 
 ```http
-GET /skill
-Authorization: Bearer <oauth_token>
+POST /skill
+Content-Type: application/json
+
+{
+  "user_id": 1,
+  "project_ids": [1, 2]
+}
 ```
 
-Skills are returned from the user's achievements.
+This endpoint does not require authentication. It fetches the selected project URLs and returns SKILL.md prompt content for an agent, plus a temporary achievement token scoped to `/achieve`. If `project_ids` is missing or empty, the API randomly selects up to 3 available projects.
+
+Returns:
+
+```json
+{
+  "prompt_filename": "SKILL.md",
+  "prompt": "# Open Source Volunteer Agent\n...",
+  "temporary_auth": {
+    "oauth_token": "...",
+    "token_type": "Bearer",
+    "scope": "achievement",
+    "expires_in": 3600
+  },
+  "projects": [
+    {
+      "id": 1,
+      "url": "https://github.com/example/project",
+      "description": "A useful open source project"
+    }
+  ],
+  "user": {
+    "id": 1,
+    "name": "Ada Lovelace",
+    "username": "ada"
+  }
+}
+```
+
+`GET /skill?user_id=1&project_id=1&project_id=2` is also supported.
 
 ### Add Achievement
 
 ```http
 POST /achieve
-Authorization: Bearer <oauth_token>
+Authorization: Bearer <oauth_token-or-temporary-achievement-token>
 Content-Type: application/json
 
 {
-  "name": "Python",
-  "description": "Built and maintained Python open source services"
+  "name": "Open source contribution",
+  "url": "https://github.com/example/project/pull/34",
+  "description": "Fixed https://github.com/example/project/issues/12 and opened https://github.com/example/project/pull/34"
+}
+```
+
+Temporary achievement tokens embed the selected project context and are limited to those projects. If a temporary token was generated for exactly one project, `project_id` is filled automatically when omitted. If the token contains multiple projects, include either `project_id` or `project_url` in the `/achieve` request.
+
+### Achievement Dashboard
+
+```http
+GET /achievements/dashboard?top_n=5
+```
+
+Returns the most contributed repositories and users for daily, weekly, and monthly windows. `top_n` defaults to `10` and must be between `1` and `100`.
+
+`GET /achievement/dashboard?top_n=5` is also supported.
+
+```json
+{
+  "top_n": 5,
+  "windows": {
+    "daily": {
+      "top_repositories": [
+        {
+          "project_id": 1,
+          "project_url": "https://github.com/example/project",
+          "project_description": "A useful open source project",
+          "contributions": 3
+        }
+      ],
+      "top_users": [
+        {
+          "user_id": 1,
+          "name": "Ada Lovelace",
+          "username": "ada",
+          "contributions": 3
+        }
+      ]
+    }
+  }
 }
 ```
 
