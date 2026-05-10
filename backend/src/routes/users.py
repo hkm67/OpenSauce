@@ -1,19 +1,13 @@
 import sqlite3
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, jsonify, request
 
-from ..auth import create_token, hash_password, require_auth, verify_password
+from ..auth import create_token, hash_password, verify_password
 from ..db import get_connection, row_to_dict, transaction
 from ..responses import error, require_fields
 
 
 users_bp = Blueprint("users", __name__)
-
-
-@users_bp.get("/me")
-@require_auth
-def me():
-    return jsonify({"authenticated": True, "user": g.current_user})
 
 
 @users_bp.post("/user")
