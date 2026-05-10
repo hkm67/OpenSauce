@@ -29,12 +29,21 @@ def create_token(user):
     return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 
-def create_temporary_achievement_token(user_id, project_ids, expires_seconds=3600):
+def create_temporary_achievement_token(user_id, projects, expires_seconds=3600):
     now = datetime.now(timezone.utc)
+    token_projects = [
+        {
+            "id": project["id"],
+            "url": project["url"],
+            "description": project["description"],
+        }
+        for project in projects
+    ]
     payload = {
         "sub": str(user_id),
         "scope": "achievement",
-        "project_ids": project_ids,
+        "projects": token_projects,
+        "project_ids": [project["id"] for project in token_projects],
         "iat": now,
         "exp": now + timedelta(seconds=expires_seconds),
     }
