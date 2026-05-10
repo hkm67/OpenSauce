@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 
 import Home from './pages/Home'
 import Login from './pages/Login'
+import OAuthCallback from './pages/OAuthCallback'
 import SignUp from './pages/SignUp'
 import AgentSetup from './pages/onboarding/AgentSetup'
 import DonationPreferences from './pages/onboarding/DonationPreferences'
@@ -37,6 +38,7 @@ export default function App() {
           {/* Public */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/oauth/callback" element={<OAuthCallback />} />
           <Route path="/signup" element={<SignUp />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />

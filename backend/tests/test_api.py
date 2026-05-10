@@ -84,6 +84,16 @@ def test_user_creation_and_login(client):
     assert isinstance(token, str)
 
 
+def test_current_user_endpoint_returns_authenticated_user(client):
+    user = create_user(client)
+    token = login(client)
+
+    response = client.get("/user", headers=auth_headers(token))
+
+    assert response.status_code == 200
+    assert response.get_json() == {"authenticated": True, "user": user}
+
+
 def test_duplicate_user_is_rejected(client):
     create_user(client)
 
@@ -141,7 +151,16 @@ def test_project_crud_endpoints(client):
     assert delete_response.status_code == 200
     assert delete_response.get_json() == {"deleted": True}
 
-    assert client.get("/projects").get_json()["projects"] == []
+    projects = client.get("/projects").get_json()["projects"]
+    assert all(project["url"] != item["url"] for item in projects)
+
+
+def test_default_projects_include_telegram_ai_bot(client):
+    response = client.get("/projects")
+
+    assert response.status_code == 200
+    urls = [project["url"] for project in response.get_json()["projects"]]
+    assert "https://github.com/hkm67/telegram-ai-bot/" in urls
 
 
 def test_project_endpoint_rejects_invalid_mutations(client):
@@ -284,12 +303,28 @@ def test_skill_endpoint_generates_prompt_for_selected_projects(client):
     assert payload["prompt_filename"] == "SKILL.md"
     assert payload["projects"] == [project]
     assert payload["temporary_auth"]["scope"] == "achievement"
+    assert payload["magic_url"].startswith("http://localhost/skill.md?")
+    assert f"project_id={project['id']}" in payload["magic_url"]
     assert "git clone <project-url>" in payload["prompt"]
     assert "POST /achieve" in payload["prompt"]
     assert "https://github.com/example/project" in payload["prompt"]
     achievement_example = payload["prompt"].split("Content-Type: application/json", 1)[1]
     achievement_example = achievement_example.split("```", 1)[0]
     assert "project_id" not in achievement_example
+
+
+def test_skill_markdown_endpoint_returns_magic_link_content(client):
+    user = create_user(client)
+    token = login(client)
+    project = create_project(client, token)
+
+    response = client.get(f"/skill.md?user_id={user['id']}&project_id={project['id']}")
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/markdown"
+    content = response.get_data(as_text=True)
+    assert "Open Source Volunteer Agent" in content
+    assert "https://github.com/example/project" in content
 
 
 def test_skill_endpoint_supports_get_and_single_project_id(client):
@@ -324,7 +359,7 @@ def test_skill_endpoint_accepts_null_int_and_string_project_id_shapes(client):
     assert null_response.status_code == 200
     assert int_response.status_code == 200
     assert string_response.status_code == 200
-    assert null_response.get_json()["projects"] == [project]
+    assert project in null_response.get_json()["projects"]
     assert int_response.get_json()["projects"] == [project]
     assert string_response.get_json()["projects"] == [project]
 
@@ -339,27 +374,23 @@ def test_skill_endpoint_randomizes_projects_when_missing_project_ids(client):
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert len(payload["projects"]) == 2
+    assert len(payload["projects"]) == 3
+    urls = {project["url"] for project in payload["projects"]}
+    assert "https://github.com/example/project-a" in urls
+    assert "https://github.com/example/project-b" in urls
     assert payload["temporary_auth"]["scope"] == "achievement"
 
 
-def test_skill_endpoint_rejects_missing_user_invalid_ids_and_empty_project_pool(client):
+def test_skill_endpoint_rejects_missing_user_and_invalid_ids(client):
     missing_user_response = client.post("/skill", json={})
     invalid_ids_response = client.post(
         "/skill", json={"user_id": 1, "project_ids": ["abc"]}
     )
-    user = create_user(client)
-    empty_pool_response = client.post("/skill", json={"user_id": user["id"]})
 
     assert missing_user_response.status_code == 400
     assert missing_user_response.get_json()["error"] == "Missing required field(s): user_id"
     assert invalid_ids_response.status_code == 400
     assert invalid_ids_response.get_json()["error"] == "project_ids must be a list of project IDs"
-    assert empty_pool_response.status_code == 404
-    assert (
-        empty_pool_response.get_json()["error"]
-        == "No projects available to generate a skill prompt"
-    )
 
 
 def test_skill_endpoint_rejects_unknown_user(client):
@@ -396,6 +427,22 @@ def test_achieve_accepts_normal_user_token(client):
     assert achievement["user_id"] == 1
     assert achievement["name"] == "Python"
     assert achievement["description"] == "Built services"
+
+
+def test_skills_endpoint_lists_current_user_achievements(client):
+    create_user(client)
+    token = login(client)
+
+    client.post(
+        "/achieve",
+        json={"name": "React", "description": "Frontend work"},
+        headers=auth_headers(token),
+    )
+
+    response = client.get("/skills", headers=auth_headers(token))
+
+    assert response.status_code == 200
+    assert response.get_json()["skills"][0]["name"] == "React"
 
 
 def test_achieve_accepts_temporary_skill_token(client):

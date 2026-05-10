@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { apiUrl } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Login() {
@@ -10,6 +11,10 @@ export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
   const from = location.state?.from?.pathname || '/dashboard'
+
+  const handleGitHubLogin = () => {
+    window.location.assign(apiUrl('/oauth/github'))
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -59,6 +64,16 @@ export default function Login() {
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
+
+          <div className="flex items-center gap-3 my-5">
+            <div className="h-px flex-1 bg-cool-gray/40" />
+            <span className="text-caption text-ash-gray">or</span>
+            <div className="h-px flex-1 bg-cool-gray/40" />
+          </div>
+
+          <button type="button" onClick={handleGitHubLogin} className="btn-outline w-full justify-center py-2 text-body-sm">
+            Continue with GitHub
+          </button>
         </div>
       </div>
     </div>

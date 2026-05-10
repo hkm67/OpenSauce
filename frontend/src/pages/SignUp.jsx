@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { apiUrl } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function SignUp() {
@@ -8,6 +9,10 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false)
   const { signup } = useAuth()
   const navigate = useNavigate()
+
+  const handleGitHubLogin = () => {
+    window.location.assign(apiUrl('/oauth/github'))
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -65,6 +70,16 @@ export default function SignUp() {
               By signing up you agree to our <Link to="/terms" className="hover:underline">Terms</Link> and <Link to="/privacy" className="hover:underline">Privacy Policy</Link>.
             </p>
           </form>
+
+          <div className="flex items-center gap-3 my-5">
+            <div className="h-px flex-1 bg-cool-gray/40" />
+            <span className="text-caption text-ash-gray">or</span>
+            <div className="h-px flex-1 bg-cool-gray/40" />
+          </div>
+
+          <button type="button" onClick={handleGitHubLogin} className="btn-outline w-full justify-center py-2 text-body-sm">
+            Continue with GitHub
+          </button>
         </div>
       </div>
     </div>

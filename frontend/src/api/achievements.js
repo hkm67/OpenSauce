@@ -1,14 +1,14 @@
 import client from './client'
 
-export const getSkills = () => client.get('/skill')
+export const getSkills = () => client.get('/skills')
 
 export const addAchievement = (data) => client.post('/achieve', data)
 
 export const fetchSkillPrompt = (userId, projectIds) => {
-  const url = new URL('http://localhost:8000/skill')
-  url.searchParams.set('user_id', userId)
-  projectIds.forEach((id) => url.searchParams.append('project_id', id))
-  return fetch(url).then((r) => r.json())
+  const params = new URLSearchParams()
+  params.set('user_id', userId)
+  projectIds.forEach((id) => params.append('project_id', id))
+  return client.get('/skill', { params }).then((r) => r.data)
 }
 
 export const getDashboard = (topN = 50) =>

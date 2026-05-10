@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { getSkills, fetchSkillPrompt } from '../../api/achievements'
 
-const BACKEND_URL = 'http://localhost:8000'
 const STEPS = ['Select Projects', 'Set Rules', 'Your Prompt']
 
 function extractRepo(url) {
@@ -22,7 +21,8 @@ export default function ContributionFlow({ projects, onClose }) {
   const [copied, setCopied] = useState(false)
   const [skillLoading, setSkillLoading] = useState(false)
   const [skillError, setSkillError] = useState('')
-  const [fetchedSkillUrl, setFetchedSkillUrl] = useState('')
+  const [skillPrompt, setSkillPrompt] = useState('')
+  const [magicUrl, setMagicUrl] = useState('')
 
   useEffect(() => {
     getSkills().then((r) => setSkills(r.data.skills || [])).catch(() => {})
@@ -33,17 +33,17 @@ export default function ContributionFlow({ projects, onClose }) {
     if (step !== 2) return
     setSkillLoading(true)
     setSkillError('')
+    setSkillPrompt('')
+    setMagicUrl('')
     fetchSkillPrompt(user?.id, selected)
       .then((data) => {
         if (data.error) { setSkillError(data.error); return }
-        const url = new URL(`${BACKEND_URL}/skill`)
-        url.searchParams.set('user_id', user?.id ?? '')
-        selected.forEach((id) => url.searchParams.append('project_id', id))
-        setFetchedSkillUrl(url.toString())
+        setSkillPrompt(data.prompt || '')
+        setMagicUrl(data.magic_url || '')
       })
       .catch(() => setSkillError('Failed to reach backend. Is the server running?'))
       .finally(() => setSkillLoading(false))
-  }, [step])
+  }, [step, selected, user?.id])
 
   const skillKeywords = skills.flatMap((s) =>
     (s.skill || s.name || '').toLowerCase().split(/[\s,/]+/)
@@ -64,11 +64,11 @@ export default function ContributionFlow({ projects, onClose }) {
 
   const selectedProjects = projects.filter((p) => selected.includes(p.id))
 
-  const prompt = fetchedSkillUrl ? `Start volunteering work at ${fetchedSkillUrl}` : ''
+  const agentLink = magicUrl || skillPrompt
 
   const copyPrompt = () => {
-    if (!prompt) return
-    navigator.clipboard.writeText(prompt).then(() => {
+    if (!agentLink) return
+    navigator.clipboard.writeText(agentLink).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
@@ -230,7 +230,7 @@ export default function ContributionFlow({ projects, onClose }) {
           {step === 2 && (
             <div>
               <p className="text-body-sm text-graphite mb-4">
-                Copy this prompt and paste it into your AI agent to start volunteering work.
+                Copy this magic link and paste it into your AI agent to start volunteering work.
               </p>
               {skillLoading ? (
                 <div className="bg-factory-light-gray border border-cool-gray/40 rounded p-4 text-caption text-ash-gray font-mono animate-pulse">
@@ -243,8 +243,13 @@ export default function ContributionFlow({ projects, onClose }) {
               ) : (
                 <div className="relative">
                   <pre className="bg-factory-light-gray border border-cool-gray/40 rounded p-4 text-caption text-factory-black font-mono whitespace-pre-wrap break-all leading-relaxed">
-                    {prompt}
+                    {agentLink}
                   </pre>
+                  {skillPrompt && (
+                    <p className="text-caption text-ash-gray mt-3">
+                      The link opens a generated SKILL.md with a temporary token scoped to the selected project.
+                    </p>
+                  )}
                   <button
                     onClick={copyPrompt}
                     className={`absolute top-3 right-3 text-caption border rounded px-2.5 py-1 transition-colors

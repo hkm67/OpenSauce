@@ -1,8 +1,16 @@
 import axios from 'axios'
 
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
+
+export function apiUrl(path) {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return `${API_BASE_URL.replace(/\/$/, '')}${normalizedPath}`
+}
+
 const client = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 })
 
 client.interceptors.request.use((config) => {

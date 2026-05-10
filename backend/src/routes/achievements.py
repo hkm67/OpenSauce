@@ -1,6 +1,8 @@
-from flask import Blueprint, g, jsonify, request
+from urllib.parse import urlencode
 
-from ..auth import create_temporary_achievement_token, require_achievement_auth
+from flask import Blueprint, Response, g, jsonify, request
+
+from ..auth import create_temporary_achievement_token, require_auth, require_achievement_auth
 from ..db import get_connection, row_to_dict, transaction
 from ..responses import error, require_fields
 
@@ -13,6 +15,23 @@ WINDOWS = {
     "weekly": "-7 days",
     "monthly": "-30 days",
 }
+
+
+@achievements_bp.get("/skills")
+@require_auth
+def list_skills():
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, name, description, url, created_at
+            FROM achievements
+            WHERE user_id = ?
+            ORDER BY id DESC
+            """,
+            (g.current_user["id"],),
+        ).fetchall()
+
+    return jsonify({"skills": [row_to_dict(row) for row in rows]})
 
 
 def _parse_project_ids(data):
@@ -175,24 +194,22 @@ def _resolve_project_id_from_token(data):
     return project_id, None
 
 
-@achievements_bp.route("/skill", methods=["GET", "POST"])
-def get_skill_prompt():
-    if request.method == "GET":
-        data = {
-            "project_ids": request.args.getlist("project_id")
-            or request.args.getlist("project_ids"),
-            "user_id": request.args.get("user_id"),
-        }
-    else:
-        data = request.get_json(silent=True) or {}
+def _skill_request_data_from_args():
+    return {
+        "project_ids": request.args.getlist("project_id")
+        or request.args.getlist("project_ids"),
+        "user_id": request.args.get("user_id"),
+    }
 
+
+def _build_skill_response_payload(data):
     missing = require_fields(data, ["user_id"])
     if missing:
-        return error(missing)
+        return None, error(missing)
 
     project_ids = _parse_project_ids(data)
     if project_ids is None:
-        return error("project_ids must be a list of project IDs")
+        return None, error("project_ids must be a list of project IDs")
 
     with get_connection() as connection:
         user = connection.execute(
@@ -200,7 +217,7 @@ def get_skill_prompt():
             (data["user_id"],),
         ).fetchone()
         if user is None:
-            return error("User not found", 404)
+            return None, error("User not found", 404)
 
         if project_ids:
             placeholders = ",".join("?" for _ in project_ids)
@@ -228,25 +245,56 @@ def get_skill_prompt():
         missing_ids = [
             project_id for project_id in project_ids if project_id not in found_ids
         ]
-        return error(f"Project not found: {', '.join(map(str, missing_ids))}", 404)
+        return None, error(f"Project not found: {', '.join(map(str, missing_ids))}", 404)
     if not projects:
-        return error("No projects available to generate a skill prompt", 404)
+        return None, error("No projects available to generate a skill prompt", 404)
 
     project_data = [row_to_dict(project) for project in projects]
     token = create_temporary_achievement_token(data["user_id"], project_data)
-    return jsonify(
-        {
-            "prompt_filename": "SKILL.md",
-            "prompt": _build_skill_prompt(project_data, token),
-            "temporary_auth": {
-                "oauth_token": token,
-                "token_type": "Bearer",
-                "scope": "achievement",
-                "expires_in": 3600,
-            },
-            "projects": project_data,
-            "user": row_to_dict(user),
-        }
+    prompt = _build_skill_prompt(project_data, token)
+    magic_query = urlencode(
+        [("user_id", data["user_id"])]
+        + [("project_id", project_id) for project_id in project_ids]
+    )
+    magic_url = f"{request.url_root.rstrip('/')}/skill.md?{magic_query}"
+
+    return {
+        "prompt_filename": "SKILL.md",
+        "prompt": prompt,
+        "magic_url": magic_url,
+        "temporary_auth": {
+            "oauth_token": token,
+            "token_type": "Bearer",
+            "scope": "achievement",
+            "expires_in": 3600,
+        },
+        "projects": project_data,
+        "user": row_to_dict(user),
+    }, None
+
+
+@achievements_bp.route("/skill", methods=["GET", "POST"])
+def get_skill_prompt():
+    if request.method == "GET":
+        data = _skill_request_data_from_args()
+    else:
+        data = request.get_json(silent=True) or {}
+
+    payload, payload_error = _build_skill_response_payload(data)
+    if payload_error:
+        return payload_error
+    return jsonify(payload)
+
+
+@achievements_bp.get("/skill.md")
+def get_skill_markdown():
+    payload, payload_error = _build_skill_response_payload(_skill_request_data_from_args())
+    if payload_error:
+        return payload_error
+    return Response(
+        payload["prompt"],
+        mimetype="text/markdown",
+        headers={"Content-Disposition": 'inline; filename="SKILL.md"'},
     )
 
 

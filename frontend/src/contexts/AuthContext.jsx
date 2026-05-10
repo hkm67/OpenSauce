@@ -1,5 +1,10 @@
 import { createContext, useContext, useState, useCallback } from 'react'
-import { login as apiLogin, signup as apiSignup } from '../api/auth'
+import {
+  getCurrentUser,
+  login as apiLogin,
+  logout as apiLogout,
+  signup as apiSignup,
+} from '../api/auth'
 
 const AuthContext = createContext(null)
 
@@ -22,6 +27,15 @@ export function AuthProvider({ children }) {
     return user
   }, [])
 
+  const completeOAuthLogin = useCallback(async (token) => {
+    localStorage.setItem('token', token)
+    const res = await getCurrentUser()
+    const { user } = res.data
+    localStorage.setItem('user', JSON.stringify(user))
+    setUser(user)
+    return user
+  }, [])
+
   const signup = useCallback(async (name, username, password) => {
     await apiSignup({ name, username, password })
     return login(username, password)
@@ -31,10 +45,11 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     setUser(null)
+    apiLogout().catch(() => {})
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, completeOAuthLogin, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   )
