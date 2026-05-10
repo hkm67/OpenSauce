@@ -1,3 +1,5 @@
+import base64
+import json
 from urllib.parse import urlencode
 
 from flask import Blueprint, Response, g, jsonify, request
@@ -105,7 +107,7 @@ Complete one useful contribution for the assigned issue.
 11. Report the completed work back to OpenSauce by calling:
 
 ```http
-POST /achieve
+POST http://localhost:8000/achieve
 Authorization: Bearer {achievement_token}
 Content-Type: application/json
 
@@ -252,11 +254,33 @@ def _issue_data_from_request(data):
 
 
 def _skill_request_data_from_args():
+    token = request.args.get("t")
+    if token:
+        try:
+            decoded = json.loads(
+                base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode("utf-8")
+            )
+        except (ValueError, TypeError):
+            decoded = {}
+        project_ids = decoded.get("p") or []
+        if not isinstance(project_ids, list):
+            project_ids = [project_ids]
+        return {
+            "project_ids": [str(pid) for pid in project_ids],
+            "user_id": decoded.get("u"),
+        }
     return {
         "project_ids": request.args.getlist("project_id")
         or request.args.getlist("project_ids"),
         "user_id": request.args.get("user_id"),
     }
+
+
+def _build_magic_token(user_id, project_ids):
+    payload = json.dumps(
+        {"u": user_id, "p": project_ids}, separators=(",", ":")
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("utf-8").rstrip("=")
 
 
 def _build_skill_response_payload(data):
@@ -322,11 +346,8 @@ def _build_skill_response_payload(data):
         data["user_id"], project_data, assigned_issue=assigned_issue
     )
     prompt = _build_skill_prompt(project_data, token)
-    magic_query = urlencode(
-        [("user_id", data["user_id"])]
-        + [("project_id", project_id) for project_id in project_ids]
-    )
-    magic_url = f"{request.url_root.rstrip('/')}/skill.md?{magic_query}"
+    magic_token = _build_magic_token(data["user_id"], project_ids)
+    magic_url = f"{request.url_root.rstrip('/')}/skill.md?t={magic_token}"
 
     return {
         "prompt_filename": "SKILL.md",

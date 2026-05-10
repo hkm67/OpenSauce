@@ -314,10 +314,10 @@ def test_skill_endpoint_generates_prompt_for_selected_projects(client):
     assert payload["projects"][0]["id"] == project["id"]
     assert payload["temporary_auth"]["scope"] == "achievement"
     assert payload["assigned_issue"]["project_id"] == project["id"]
-    assert payload["magic_url"].startswith("http://localhost/skill.md?")
-    assert f"project_id={project['id']}" in payload["magic_url"]
+    assert payload["magic_url"].startswith("http://localhost/skill.md?t=")
+    assert "&" not in payload["magic_url"]
     assert "git clone <project-url>" in payload["prompt"]
-    assert "POST /achieve" in payload["prompt"]
+    assert "POST http://localhost:8000/achieve" in payload["prompt"]
     assert "https://github.com/example/project" in payload["prompt"]
     achievement_example = payload["prompt"].split("Content-Type: application/json", 1)[1]
     achievement_example = achievement_example.split("```", 1)[0]

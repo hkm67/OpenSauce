@@ -69,11 +69,8 @@ export default function ContributionFlow({ projects, onClose }) {
   const selectedProjects = projects.filter((p) => selected.includes(p.id))
 
   const selectedRepoNames = selectedProjects.map((p) => extractRepo(p.url)).join(', ')
-  const issueLine = assignedIssue
-    ? `\n\nAssigned issue: #${assignedIssue.number} ${assignedIssue.title}\n${assignedIssue.url}`
-    : ''
   const agentPrompt = magicUrl
-    ? `Start an OpenSauce contribution for ${selectedRepoNames || 'the selected open source project'}.${issueLine}\n\nOpen this magic link to fetch the generated SKILL.md, then follow its instructions exactly:\n${magicUrl}\n\nWhen the work is complete, use the temporary token in SKILL.md to report the pull request back to OpenSauce.`
+    ? `Start an OpenSauce contribution for ${selectedRepoNames || 'the selected open source project'} at ${magicUrl}`
     : skillPrompt
   const cursorPrompt = agentPrompt
 
