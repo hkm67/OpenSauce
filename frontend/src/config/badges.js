@@ -20,16 +20,14 @@ export function getLevel(contributions) {
 }
 
 export const BADGES = [
-  { id: 'first-contribution', name: 'First Commit',   icon: '🌱', description: 'Made your first AI-powered open source contribution.', threshold: 1   },
-  { id: 'streak-3',           name: 'On a Roll',      icon: '🔥', description: 'Reached 3 contributions — the momentum is building.',   threshold: 3   },
-  { id: 'five-club',          name: 'Five-Club',      icon: '🔧', description: 'Five contributions and counting. You mean business.',   threshold: 5   },
-  { id: 'double-digits',      name: 'Double Digits',  icon: '⚡', description: 'Hit 10 contributions. Your agents are on fire.',        threshold: 10  },
-  { id: 'maintainer',         name: 'Maintainer',     icon: '🏗️', description: 'Trusted by the community with 15 contributions.',      threshold: 15  },
-  { id: 'generous',           name: 'Generous',       icon: '🤝', description: '20 contributions. Giving back at scale.',              threshold: 20  },
-  { id: 'twenty-five',        name: 'Veteran',        icon: '🧭', description: '25 contributions. A veteran of open source.',          threshold: 25  },
-  { id: 'core-member',        name: 'Core Member',    icon: '🍅', description: '50 contributions. You are the core.',                  threshold: 50  },
-  { id: 'architect',          name: 'Architect',      icon: '🏛️', description: '75 contributions. You are shaping the ecosystem.',     threshold: 75  },
-  { id: 'century',            name: 'Century',        icon: '💯', description: '100 contributions. Legendary.',                        threshold: 100 },
+  { id: 'first-contribution', name: 'First Commit',  description: 'Made your first AI-powered open source contribution.', image: '/tomato_1.png', threshold: 1   },
+  { id: 'streak-3',           name: 'On a Roll',     description: 'Reached 3 contributions — the momentum is building.',  image: '/tomato_2.png', threshold: 3   },
+  { id: 'five-club',          name: 'Five-Club',     description: 'Five contributions and counting. You mean business.',  image: '/tomato_3.png', threshold: 5   },
+  { id: 'double-digits',      name: 'Double Digits', description: 'Hit 10 contributions. Your agents are on fire.',       image: '/tomato_4.png', threshold: 10  },
+  { id: 'maintainer',         name: 'Maintainer',    description: 'Trusted by the community with 15 contributions.',      image: '/tomato_5.png', threshold: 15  },
+  { id: 'generous',           name: 'Generous',      description: '20 contributions. Giving back at scale.',             image: '/tomato_6.png', threshold: 20  },
+  { id: 'core-member',        name: 'Core Member',   description: '50 contributions. You are the core.',                 image: '/tomato_7.png', threshold: 50  },
+  { id: 'century',            name: 'Century',       description: '100 contributions. Legendary.',                       image: '/tomato_8.png', threshold: 100 },
 ]
 
 export function getBadges(contributions) {

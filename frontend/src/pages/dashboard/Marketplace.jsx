@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
 import ProjectCard from '../../components/ProjectCard'
 import ContributionFlow from './ContributionFlow'
@@ -13,7 +13,14 @@ export default function Marketplace() {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const [showFlow, setShowFlow] = useState(false)
+  const [preselect, setPreselect] = useState(null)
   const navigate = useNavigate()
+  const location = useLocation()
+
+  useEffect(() => {
+    if (location.state?.openFlow) setShowFlow(true)
+    if (location.state?.preselect) setPreselect(location.state.preselect)
+  }, [])
 
   useEffect(() => {
     getProjects()
@@ -92,7 +99,7 @@ export default function Marketplace() {
               <ProjectCard
                 key={project.id}
                 project={project}
-                onClick={() => navigate(`/projects/${project.id}`, { state: { project } })}
+                onClick={() => { setPreselect(project.id); setShowFlow(true) }}
               />
             ))}
           </div>
@@ -102,7 +109,8 @@ export default function Marketplace() {
       {showFlow && (
         <ContributionFlow
           projects={projects}
-          onClose={() => setShowFlow(false)}
+          preselect={preselect}
+          onClose={() => { setShowFlow(false); setPreselect(null) }}
         />
       )}
     </DashboardLayout>

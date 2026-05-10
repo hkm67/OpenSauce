@@ -10,7 +10,7 @@ export default function Navbar() {
       <div className="max-w-content mx-auto px-6 h-12 flex items-center gap-0">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-1.5 text-body text-factory-black mr-8 shrink-0">
-          <span>🍅</span>
+          <img src="/icon_OpenSauce.jpeg" alt="OpenSauce" className="w-5 h-5 rounded-sm object-cover shrink-0" />
           <span>OpenSauce</span>
         </Link>
 

@@ -5,13 +5,10 @@ const navItems = [
   { label: 'Overview',            path: '/dashboard' },
   { label: 'Project Marketplace', path: '/dashboard/marketplace' },
   { label: 'Contributions',       path: '/dashboard/contributions' },
-  { label: 'My Agents',           path: '/dashboard/agents' },
 ]
 
 const bottomItems = [
-  { label: 'Notifications', path: '/notifications' },
-  { label: 'Settings',      path: '/settings' },
-  { label: 'Docs',          path: '/docs' },
+  { label: 'Settings', path: '/settings' },
 ]
 
 export default function DashboardLayout({ children }) {
@@ -22,17 +19,17 @@ export default function DashboardLayout({ children }) {
   return (
     <div className="min-h-screen flex bg-factory-light-gray">
       {/* Sidebar */}
-      <aside className="w-52 shrink-0 bg-faded-silver border-r border-cool-gray/40 flex flex-col">
+      <aside className="w-52 shrink-0 bg-faded-silver border-r border-cool-gray/40 flex flex-col h-screen sticky top-0">
         {/* Logo */}
         <div className="h-12 flex items-center px-4 border-b border-cool-gray/40">
           <Link to="/dashboard" className="text-body text-factory-black flex items-center gap-1.5">
-            <span>🍅</span>
+            <img src="/icon_OpenSauce.jpeg" alt="OpenSauce" className="w-5 h-5 rounded-sm object-cover shrink-0" />
             <span>OpenSauce</span>
           </Link>
         </div>
 
         {/* Main nav */}
-        <nav className="flex-1 p-2 space-y-0.5">
+        <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {navItems.map((item) => {
             const active = item.path === '/dashboard'
               ? pathname === '/dashboard'

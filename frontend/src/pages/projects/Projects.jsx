@@ -87,7 +87,7 @@ export default function Projects() {
                 <ProjectCard
                   key={project.id}
                   project={project}
-                  onClick={() => navigate(`/projects/${project.id}`, { state: { project } })}
+                  onClick={() => navigate('/dashboard/marketplace', { state: { openFlow: true, preselect: project.id } })}
                 />
               ))}
             </div>
