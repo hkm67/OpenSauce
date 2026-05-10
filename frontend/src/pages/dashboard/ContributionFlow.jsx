@@ -19,6 +19,7 @@ export default function ContributionFlow({ projects, onClose }) {
   const [endTime, setEndTime] = useState('')
   const [maxTokens, setMaxTokens] = useState('')
   const [copied, setCopied] = useState(false)
+  const [cursorOpened, setCursorOpened] = useState(false)
   const [skillLoading, setSkillLoading] = useState(false)
   const [skillError, setSkillError] = useState('')
   const [skillPrompt, setSkillPrompt] = useState('')
@@ -72,6 +73,15 @@ export default function ContributionFlow({ projects, onClose }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
+  }
+
+  const openInCursor = () => {
+    if (!prompt) return
+    navigator.clipboard.writeText(prompt)
+    const cursorUrl = `cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(prompt)}`
+    window.open(cursorUrl, '_self')
+    setCursorOpened(true)
+    setTimeout(() => setCursorOpened(false), 2000)
   }
 
   const canNext =
@@ -285,12 +295,21 @@ export default function ContributionFlow({ projects, onClose }) {
               Next
             </button>
           ) : (
-            <button
-              onClick={onClose}
-              className="bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors"
-            >
-              Done
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={openInCursor}
+                disabled={!prompt}
+                className={`btn-outline px-4 py-2 text-body-sm transition-colors ${!prompt ? 'opacity-40 cursor-not-allowed' : ''}`}
+              >
+                {cursorOpened ? 'Opening…' : 'Open Cursor'}
+              </button>
+              <button
+                onClick={onClose}
+                className="bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors"
+              >
+                Done
+              </button>
+            </div>
           )}
         </div>
       </div>
