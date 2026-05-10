@@ -1,7 +1,10 @@
-from flask import Blueprint, g, jsonify, request
+from urllib.parse import urlencode
 
-from ..auth import create_temporary_achievement_token, require_achievement_auth
+from flask import Blueprint, Response, g, jsonify, request
+
+from ..auth import create_temporary_achievement_token, require_auth, require_achievement_auth
 from ..db import get_connection, row_to_dict, transaction
+from ..github import fetch_random_open_issue
 from ..responses import error, require_fields
 
 
@@ -13,6 +16,31 @@ WINDOWS = {
     "weekly": "-7 days",
     "monthly": "-30 days",
 }
+
+
+@achievements_bp.get("/skills")
+@require_auth
+def list_skills():
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                name,
+                description,
+                url,
+                issue_url,
+                issue_title,
+                issue_number,
+                created_at
+            FROM achievements
+            WHERE user_id = ?
+            ORDER BY id DESC
+            """,
+            (g.current_user["id"],),
+        ).fetchall()
+
+    return jsonify({"skills": [row_to_dict(row) for row in rows]})
 
 
 def _parse_project_ids(data):
@@ -36,6 +64,18 @@ def _build_skill_prompt(projects, achievement_token):
         for project in projects
     )
     project_urls = "\n".join(f"- {project['url']}" for project in projects)
+    assigned_issue = next(
+        (project.get("assigned_issue") for project in projects if project.get("assigned_issue")),
+        None,
+    )
+    issue_section = f"""## Assigned Issue
+
+- Project: {assigned_issue['project_url']}
+- Issue: #{assigned_issue['number']} {assigned_issue['title']}
+- URL: {assigned_issue['url']}
+
+Work on this assigned issue. The achievement token already contains this issue context, so the final `/achieve` call does not need `project_id`, `project_url`, or `issue_url`.
+"""
 
     return f"""# Open Source Volunteer Agent
 
@@ -45,14 +85,16 @@ You are helping with volunteer work on selected open source projects.
 
 {project_list}
 
+{issue_section}
+
 ## Mission
 
-Choose one project from the selected list and complete one useful contribution.
+Complete one useful contribution for the assigned issue.
 
 1. Clone the repository locally:
    `git clone <project-url>`
 2. Enter the repository and pull the latest default branch.
-3. Review open issues and find one issue that appears unassigned, active, and not already being handled in an existing pull request.
+3. Review the assigned issue and confirm it is still open, unassigned, and not already being handled in an existing pull request.
 4. Analyze the codebase enough to understand the issue and the expected project conventions.
 5. Create a focused branch for the fix.
 6. Implement the fix with the smallest maintainable change.
@@ -70,7 +112,7 @@ Content-Type: application/json
 {{
   "name": "Open source contribution",
   "url": "<merge-request-url>",
-  "description": "Fixed <issue-url> in <project-url> and opened <merge-request-url>"
+  "description": "Fixed the assigned issue and opened <merge-request-url>"
 }}
 ```
 
@@ -81,7 +123,7 @@ Content-Type: application/json
 - Do not take over work that another contributor is already handling.
 - Keep the change small enough for maintainers to review comfortably.
 - If a selected project is unavailable, try the next selected project.
-- The achievement token already contains the selected project context. If this token lists more than one project, include either `"project_id": <selected-project-id>` or `"project_url": "<selected-project-url>"` in the final `/achieve` call.
+- The achievement token already contains the assigned issue context.
 
 ## Project URLs
 
@@ -141,6 +183,10 @@ def _top_users(connection, since_modifier, top_n):
 
 
 def _resolve_project_id_from_token(data):
+    assigned_issue = g.token_payload.get("assigned_issue")
+    if assigned_issue:
+        return assigned_issue["project_id"], None
+
     token_projects = g.token_payload.get("projects", [])
     token_project_ids = g.token_payload.get("project_ids", [])
 
@@ -175,24 +221,52 @@ def _resolve_project_id_from_token(data):
     return project_id, None
 
 
-@achievements_bp.route("/skill", methods=["GET", "POST"])
-def get_skill_prompt():
-    if request.method == "GET":
-        data = {
-            "project_ids": request.args.getlist("project_id")
-            or request.args.getlist("project_ids"),
-            "user_id": request.args.get("user_id"),
-        }
-    else:
-        data = request.get_json(silent=True) or {}
+def _resolve_issue_from_token(data):
+    assigned_issue = g.token_payload.get("assigned_issue")
+    if not assigned_issue:
+        return _issue_data_from_request(data)
 
+    if data.get("issue_url") and data["issue_url"] != assigned_issue["url"]:
+        return None, error("Temporary token cannot record work for this issue", 403)
+
+    return {
+        "issue_url": assigned_issue["url"],
+        "issue_title": assigned_issue["title"],
+        "issue_number": assigned_issue["number"],
+    }, None
+
+
+def _issue_data_from_request(data):
+    issue_number = data.get("issue_number")
+    if issue_number is not None:
+        try:
+            issue_number = int(issue_number)
+        except (TypeError, ValueError):
+            return None, error("issue_number must be an integer")
+
+    return {
+        "issue_url": data.get("issue_url"),
+        "issue_title": data.get("issue_title"),
+        "issue_number": issue_number,
+    }, None
+
+
+def _skill_request_data_from_args():
+    return {
+        "project_ids": request.args.getlist("project_id")
+        or request.args.getlist("project_ids"),
+        "user_id": request.args.get("user_id"),
+    }
+
+
+def _build_skill_response_payload(data):
     missing = require_fields(data, ["user_id"])
     if missing:
-        return error(missing)
+        return None, error(missing)
 
     project_ids = _parse_project_ids(data)
     if project_ids is None:
-        return error("project_ids must be a list of project IDs")
+        return None, error("project_ids must be a list of project IDs")
 
     with get_connection() as connection:
         user = connection.execute(
@@ -200,7 +274,7 @@ def get_skill_prompt():
             (data["user_id"],),
         ).fetchone()
         if user is None:
-            return error("User not found", 404)
+            return None, error("User not found", 404)
 
         if project_ids:
             placeholders = ",".join("?" for _ in project_ids)
@@ -228,25 +302,70 @@ def get_skill_prompt():
         missing_ids = [
             project_id for project_id in project_ids if project_id not in found_ids
         ]
-        return error(f"Project not found: {', '.join(map(str, missing_ids))}", 404)
+        return None, error(f"Project not found: {', '.join(map(str, missing_ids))}", 404)
     if not projects:
-        return error("No projects available to generate a skill prompt", 404)
+        return None, error("No projects available to generate a skill prompt", 404)
 
     project_data = [row_to_dict(project) for project in projects]
-    token = create_temporary_achievement_token(data["user_id"], project_data)
-    return jsonify(
-        {
-            "prompt_filename": "SKILL.md",
-            "prompt": _build_skill_prompt(project_data, token),
-            "temporary_auth": {
-                "oauth_token": token,
-                "token_type": "Bearer",
-                "scope": "achievement",
-                "expires_in": 3600,
-            },
-            "projects": project_data,
-            "user": row_to_dict(user),
-        }
+    assigned_issue = fetch_random_open_issue(project_data)
+    if not assigned_issue:
+        return None, error(
+            "No open unassigned GitHub issue available for selected projects"
+        )
+
+    if assigned_issue:
+        for project in project_data:
+            if project["id"] == assigned_issue["project_id"]:
+                project["assigned_issue"] = assigned_issue
+
+    token = create_temporary_achievement_token(
+        data["user_id"], project_data, assigned_issue=assigned_issue
+    )
+    prompt = _build_skill_prompt(project_data, token)
+    magic_query = urlencode(
+        [("user_id", data["user_id"])]
+        + [("project_id", project_id) for project_id in project_ids]
+    )
+    magic_url = f"{request.url_root.rstrip('/')}/skill.md?{magic_query}"
+
+    return {
+        "prompt_filename": "SKILL.md",
+        "prompt": prompt,
+        "magic_url": magic_url,
+        "temporary_auth": {
+            "oauth_token": token,
+            "token_type": "Bearer",
+            "scope": "achievement",
+            "expires_in": 3600,
+        },
+        "projects": project_data,
+        "assigned_issue": assigned_issue,
+        "user": row_to_dict(user),
+    }, None
+
+
+@achievements_bp.route("/skill", methods=["GET", "POST"])
+def get_skill_prompt():
+    if request.method == "GET":
+        data = _skill_request_data_from_args()
+    else:
+        data = request.get_json(silent=True) or {}
+
+    payload, payload_error = _build_skill_response_payload(data)
+    if payload_error:
+        return payload_error
+    return jsonify(payload)
+
+
+@achievements_bp.get("/skill.md")
+def get_skill_markdown():
+    payload, payload_error = _build_skill_response_payload(_skill_request_data_from_args())
+    if payload_error:
+        return payload_error
+    return Response(
+        payload["prompt"],
+        mimetype="text/markdown",
+        headers={"Content-Disposition": 'inline; filename="SKILL.md"'},
     )
 
 
@@ -281,6 +400,9 @@ def add_achievement():
         project_id, project_error = _resolve_project_id_from_token(data)
         if project_error:
             return project_error
+        issue_data, issue_error = _resolve_issue_from_token(data)
+        if issue_error:
+            return issue_error
     else:
         project_id = data.get("project_id")
         if project_id is not None:
@@ -288,6 +410,9 @@ def add_achievement():
                 project_id = int(project_id)
             except (TypeError, ValueError):
                 return error("project_id must be an integer")
+        issue_data, issue_error = _issue_data_from_request(data)
+        if issue_error:
+            return issue_error
 
     with transaction() as connection:
         if project_id is not None:
@@ -300,8 +425,17 @@ def add_achievement():
 
         cursor = connection.execute(
             """
-            INSERT INTO achievements (user_id, project_id, name, description, url)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO achievements (
+                user_id,
+                project_id,
+                name,
+                description,
+                url,
+                issue_url,
+                issue_title,
+                issue_number
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 g.current_user["id"],
@@ -309,11 +443,24 @@ def add_achievement():
                 data["name"],
                 data.get("description"),
                 data.get("url"),
+                issue_data["issue_url"],
+                issue_data["issue_title"],
+                issue_data["issue_number"],
             ),
         )
         achievement = connection.execute(
             """
-            SELECT id, user_id, project_id, name, description, url, created_at
+            SELECT
+                id,
+                user_id,
+                project_id,
+                name,
+                description,
+                url,
+                issue_url,
+                issue_title,
+                issue_number,
+                created_at
             FROM achievements
             WHERE id = ?
             """,

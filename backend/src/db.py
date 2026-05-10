@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS achievements (
     name TEXT NOT NULL,
     description TEXT,
     url TEXT,
+    issue_url TEXT,
+    issue_title TEXT,
+    issue_number INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
@@ -47,6 +50,16 @@ CREATE TABLE IF NOT EXISTS achievements (
 MIGRATIONS = (
     "ALTER TABLE achievements ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL",
     "ALTER TABLE achievements ADD COLUMN url TEXT",
+    "ALTER TABLE achievements ADD COLUMN issue_url TEXT",
+    "ALTER TABLE achievements ADD COLUMN issue_title TEXT",
+    "ALTER TABLE achievements ADD COLUMN issue_number INTEGER",
+)
+
+DEFAULT_PROJECTS = (
+    (
+        "https://github.com/hkm67/telegram-ai-bot/",
+        "Telegram group bot that captures chat context and answers with an Ollama-first LLM agent, Gemini fallback, tool use, and Docker deployment. Has an open issue ready for agent work.",
+    ),
 )
 
 
@@ -79,6 +92,16 @@ def _ensure_github_id_column(connection):
     )
 
 
+def _seed_default_projects(connection):
+    connection.executemany(
+        """
+        INSERT OR IGNORE INTO projects (url, description)
+        VALUES (?, ?)
+        """,
+        DEFAULT_PROJECTS,
+    )
+
+
 def init_db():
     with transaction() as connection:
         connection.executescript(SCHEMA)
@@ -90,6 +113,7 @@ def init_db():
             column_name = migration.split(" ADD COLUMN ", 1)[1].split(" ", 1)[0]
             if column_name not in existing_columns:
                 connection.execute(migration)
+        _seed_default_projects(connection)
 
 
 def row_to_dict(row):

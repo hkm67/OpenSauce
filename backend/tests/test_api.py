@@ -17,6 +17,16 @@ def client(tmp_path, monkeypatch):
             sys.modules.pop(module_name)
 
     app_module = importlib.import_module("src.app")
+    monkeypatch.setattr(
+        "src.routes.achievements.fetch_random_open_issue",
+        lambda projects: {
+            "project_id": projects[0]["id"],
+            "project_url": projects[0]["url"],
+            "number": 42,
+            "title": "Fix flaky contribution flow",
+            "url": f"{projects[0]['url'].rstrip('/')}/issues/42",
+        },
+    )
     app_module.app.config.update(TESTING=True)
     return app_module.app.test_client()
 
@@ -84,6 +94,16 @@ def test_user_creation_and_login(client):
     assert isinstance(token, str)
 
 
+def test_current_user_endpoint_returns_authenticated_user(client):
+    user = create_user(client)
+    token = login(client)
+
+    response = client.get("/user", headers=auth_headers(token))
+
+    assert response.status_code == 200
+    assert response.get_json() == {"authenticated": True, "user": user}
+
+
 def test_duplicate_user_is_rejected(client):
     create_user(client)
 
@@ -141,7 +161,16 @@ def test_project_crud_endpoints(client):
     assert delete_response.status_code == 200
     assert delete_response.get_json() == {"deleted": True}
 
-    assert client.get("/projects").get_json()["projects"] == []
+    projects = client.get("/projects").get_json()["projects"]
+    assert all(project["url"] != item["url"] for item in projects)
+
+
+def test_default_projects_include_telegram_ai_bot(client):
+    response = client.get("/projects")
+
+    assert response.status_code == 200
+    urls = [project["url"] for project in response.get_json()["projects"]]
+    assert "https://github.com/hkm67/telegram-ai-bot/" in urls
 
 
 def test_project_endpoint_rejects_invalid_mutations(client):
@@ -282,14 +311,82 @@ def test_skill_endpoint_generates_prompt_for_selected_projects(client):
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["prompt_filename"] == "SKILL.md"
-    assert payload["projects"] == [project]
+    assert payload["projects"][0]["id"] == project["id"]
     assert payload["temporary_auth"]["scope"] == "achievement"
+    assert payload["assigned_issue"]["project_id"] == project["id"]
+    assert payload["magic_url"].startswith("http://localhost/skill.md?")
+    assert f"project_id={project['id']}" in payload["magic_url"]
     assert "git clone <project-url>" in payload["prompt"]
     assert "POST /achieve" in payload["prompt"]
     assert "https://github.com/example/project" in payload["prompt"]
     achievement_example = payload["prompt"].split("Content-Type: application/json", 1)[1]
     achievement_example = achievement_example.split("```", 1)[0]
     assert "project_id" not in achievement_example
+
+
+def test_skill_endpoint_embeds_random_open_issue(client, monkeypatch):
+    user = create_user(client)
+    token = login(client)
+    project = create_project(client, token)
+    issue = {
+        "project_id": project["id"],
+        "project_url": project["url"],
+        "number": 42,
+        "title": "Fix flaky contribution flow",
+        "url": "https://github.com/example/project/issues/42",
+    }
+    monkeypatch.setattr(
+        "src.routes.achievements.fetch_random_open_issue",
+        lambda projects: issue,
+    )
+
+    response = client.post(
+        "/skill",
+        json={"user_id": user["id"], "project_ids": [project["id"]]},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["assigned_issue"] == issue
+    assert payload["projects"][0]["assigned_issue"] == issue
+    assert "Assigned Issue" in payload["prompt"]
+    assert "Fix flaky contribution flow" in payload["prompt"]
+    assert "https://github.com/example/project/issues/42" in payload["prompt"]
+
+
+def test_skill_endpoint_returns_400_when_no_open_issue(client, monkeypatch):
+    user = create_user(client)
+    token = login(client)
+    project = create_project(client, token)
+    monkeypatch.setattr(
+        "src.routes.achievements.fetch_random_open_issue",
+        lambda projects: None,
+    )
+
+    response = client.post(
+        "/skill",
+        json={"user_id": user["id"], "project_ids": [project["id"]]},
+    )
+
+    assert response.status_code == 400
+    assert (
+        response.get_json()["error"]
+        == "No open unassigned GitHub issue available for selected projects"
+    )
+
+
+def test_skill_markdown_endpoint_returns_magic_link_content(client):
+    user = create_user(client)
+    token = login(client)
+    project = create_project(client, token)
+
+    response = client.get(f"/skill.md?user_id={user['id']}&project_id={project['id']}")
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/markdown"
+    content = response.get_data(as_text=True)
+    assert "Open Source Volunteer Agent" in content
+    assert "https://github.com/example/project" in content
 
 
 def test_skill_endpoint_supports_get_and_single_project_id(client):
@@ -300,7 +397,7 @@ def test_skill_endpoint_supports_get_and_single_project_id(client):
     response = client.get(f"/skill?user_id={user['id']}&project_id={project['id']}")
 
     assert response.status_code == 200
-    assert response.get_json()["projects"] == [project]
+    assert response.get_json()["projects"][0]["id"] == project["id"]
 
 
 def test_skill_endpoint_accepts_null_int_and_string_project_id_shapes(client):
@@ -324,9 +421,11 @@ def test_skill_endpoint_accepts_null_int_and_string_project_id_shapes(client):
     assert null_response.status_code == 200
     assert int_response.status_code == 200
     assert string_response.status_code == 200
-    assert null_response.get_json()["projects"] == [project]
-    assert int_response.get_json()["projects"] == [project]
-    assert string_response.get_json()["projects"] == [project]
+    assert any(
+        item["id"] == project["id"] for item in null_response.get_json()["projects"]
+    )
+    assert int_response.get_json()["projects"][0]["id"] == project["id"]
+    assert string_response.get_json()["projects"][0]["id"] == project["id"]
 
 
 def test_skill_endpoint_randomizes_projects_when_missing_project_ids(client):
@@ -339,27 +438,23 @@ def test_skill_endpoint_randomizes_projects_when_missing_project_ids(client):
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert len(payload["projects"]) == 2
+    assert len(payload["projects"]) == 3
+    urls = {project["url"] for project in payload["projects"]}
+    assert "https://github.com/example/project-a" in urls
+    assert "https://github.com/example/project-b" in urls
     assert payload["temporary_auth"]["scope"] == "achievement"
 
 
-def test_skill_endpoint_rejects_missing_user_invalid_ids_and_empty_project_pool(client):
+def test_skill_endpoint_rejects_missing_user_and_invalid_ids(client):
     missing_user_response = client.post("/skill", json={})
     invalid_ids_response = client.post(
         "/skill", json={"user_id": 1, "project_ids": ["abc"]}
     )
-    user = create_user(client)
-    empty_pool_response = client.post("/skill", json={"user_id": user["id"]})
 
     assert missing_user_response.status_code == 400
     assert missing_user_response.get_json()["error"] == "Missing required field(s): user_id"
     assert invalid_ids_response.status_code == 400
     assert invalid_ids_response.get_json()["error"] == "project_ids must be a list of project IDs"
-    assert empty_pool_response.status_code == 404
-    assert (
-        empty_pool_response.get_json()["error"]
-        == "No projects available to generate a skill prompt"
-    )
 
 
 def test_skill_endpoint_rejects_unknown_user(client):
@@ -398,6 +493,22 @@ def test_achieve_accepts_normal_user_token(client):
     assert achievement["description"] == "Built services"
 
 
+def test_skills_endpoint_lists_current_user_achievements(client):
+    create_user(client)
+    token = login(client)
+
+    client.post(
+        "/achieve",
+        json={"name": "React", "description": "Frontend work"},
+        headers=auth_headers(token),
+    )
+
+    response = client.get("/skills", headers=auth_headers(token))
+
+    assert response.status_code == 200
+    assert response.get_json()["skills"][0]["name"] == "React"
+
+
 def test_achieve_accepts_temporary_skill_token(client):
     user = create_user(client)
     token = login(client)
@@ -422,6 +533,45 @@ def test_achieve_accepts_temporary_skill_token(client):
     assert achievement["user_id"] == user["id"]
     assert achievement["project_id"] == project["id"]
     assert achievement["name"] == "Open source contribution"
+
+
+def test_achieve_records_assigned_issue_from_temporary_token(client, monkeypatch):
+    user = create_user(client)
+    token = login(client)
+    project = create_project(client, token)
+    issue = {
+        "project_id": project["id"],
+        "project_url": project["url"],
+        "number": 42,
+        "title": "Fix flaky contribution flow",
+        "url": "https://github.com/example/project/issues/42",
+    }
+    monkeypatch.setattr(
+        "src.routes.achievements.fetch_random_open_issue",
+        lambda projects: issue,
+    )
+    skill_response = client.post(
+        "/skill",
+        json={"user_id": user["id"], "project_ids": [project["id"]]},
+    )
+    temporary_token = skill_response.get_json()["temporary_auth"]["oauth_token"]
+
+    response = client.post(
+        "/achieve",
+        json={
+            "name": "Open source contribution",
+            "url": "https://github.com/example/project/pull/7",
+            "description": "Fixed the assigned issue",
+        },
+        headers=auth_headers(temporary_token),
+    )
+
+    assert response.status_code == 201
+    achievement = response.get_json()["achievement"]
+    assert achievement["project_id"] == project["id"]
+    assert achievement["issue_url"] == issue["url"]
+    assert achievement["issue_title"] == issue["title"]
+    assert achievement["issue_number"] == issue["number"]
 
 
 def test_achieve_accepts_temporary_skill_token_with_project_url(client):
@@ -449,7 +599,7 @@ def test_achieve_accepts_temporary_skill_token_with_project_url(client):
     assert response.status_code == 201
     achievement = response.get_json()["achievement"]
     assert achievement["user_id"] == user["id"]
-    assert achievement["project_id"] == project_b["id"]
+    assert achievement["project_id"] == project_a["id"]
 
 
 def test_achieve_rejects_invalid_project_inputs(client):
@@ -473,16 +623,100 @@ def test_achieve_rejects_invalid_project_inputs(client):
     assert unknown_project_response.get_json()["error"] == "Project not found"
 
 
-def test_temporary_achievement_token_rejects_ambiguous_or_wrong_project(client):
+def test_achieve_records_issue_fields_for_user_token(client):
+    create_user(client)
+    token = login(client)
+    project = create_project(client, token)
+
+    response = client.post(
+        "/achieve",
+        json={
+            "name": "Contribution",
+            "project_id": project["id"],
+            "issue_url": "https://github.com/example/project/issues/42",
+            "issue_title": "Fix flaky contribution flow",
+            "issue_number": "42",
+        },
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 201
+    achievement = response.get_json()["achievement"]
+    assert achievement["issue_url"] == "https://github.com/example/project/issues/42"
+    assert achievement["issue_title"] == "Fix flaky contribution flow"
+    assert achievement["issue_number"] == 42
+
+
+def test_achieve_rejects_invalid_issue_number(client):
+    create_user(client)
+    token = login(client)
+
+    response = client.post(
+        "/achieve",
+        json={"name": "Contribution", "issue_number": "abc"},
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "issue_number must be an integer"
+
+
+def test_temporary_token_rejects_wrong_issue_url(client, monkeypatch):
+    user = create_user(client)
+    token = login(client)
+    project = create_project(client, token)
+    issue = {
+        "project_id": project["id"],
+        "project_url": project["url"],
+        "number": 42,
+        "title": "Fix flaky contribution flow",
+        "url": "https://github.com/example/project/issues/42",
+    }
+    monkeypatch.setattr(
+        "src.routes.achievements.fetch_random_open_issue",
+        lambda projects: issue,
+    )
+    skill_response = client.post(
+        "/skill",
+        json={"user_id": user["id"], "project_ids": [project["id"]]},
+    )
+    temporary_token = skill_response.get_json()["temporary_auth"]["oauth_token"]
+
+    response = client.post(
+        "/achieve",
+        json={
+            "name": "Contribution",
+            "issue_url": "https://github.com/example/project/issues/99",
+        },
+        headers=auth_headers(temporary_token),
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Temporary token cannot record work for this issue"
+
+
+def test_legacy_temporary_token_rejects_ambiguous_or_wrong_project(client):
     user = create_user(client)
     token = login(client)
     project_a = create_project(client, token, "https://github.com/example/project-a")
     project_b = create_project(client, token, "https://github.com/example/project-b")
-    skill_response = client.post(
-        "/skill",
-        json={"user_id": user["id"], "project_ids": [project_a["id"], project_b["id"]]},
+    temporary_token = make_token(
+        user["id"],
+        scope="achievement",
+        projects=[
+            {
+                "id": project_a["id"],
+                "url": project_a["url"],
+                "description": project_a["description"],
+            },
+            {
+                "id": project_b["id"],
+                "url": project_b["url"],
+                "description": project_b["description"],
+            },
+        ],
+        project_ids=[project_a["id"], project_b["id"]],
     )
-    temporary_token = skill_response.get_json()["temporary_auth"]["oauth_token"]
     headers = auth_headers(temporary_token)
 
     ambiguous_response = client.post(
@@ -739,4 +973,6 @@ def test_init_db_migrates_legacy_achievement_schema(tmp_path, monkeypatch):
             row[1] for row in migrated.execute("PRAGMA table_info(achievements)")
         }
 
-    assert {"project_id", "url"}.issubset(columns)
+    assert {"project_id", "url", "issue_url", "issue_title", "issue_number"}.issubset(
+        columns
+    )

@@ -182,7 +182,7 @@ Content-Type: application/json
 }
 ```
 
-This endpoint does not require authentication. It fetches the selected project URLs and returns SKILL.md prompt content for an agent, plus a temporary achievement token scoped to `/achieve`. If `project_ids` is missing or empty, the API randomly selects up to 3 available projects.
+This endpoint does not require authentication. It fetches the selected project URLs, tries to randomly assign one open unassigned GitHub issue, and returns SKILL.md prompt content for an agent plus a temporary achievement token scoped to `/achieve`. If `project_ids` is missing or empty, the API randomly selects up to 3 available projects.
 
 Returns:
 
@@ -200,9 +200,23 @@ Returns:
     {
       "id": 1,
       "url": "https://github.com/example/project",
-      "description": "A useful open source project"
+      "description": "A useful open source project",
+      "assigned_issue": {
+        "project_id": 1,
+        "project_url": "https://github.com/example/project",
+        "number": 12,
+        "title": "Fix flaky contribution flow",
+        "url": "https://github.com/example/project/issues/12"
+      }
     }
   ],
+  "assigned_issue": {
+    "project_id": 1,
+    "project_url": "https://github.com/example/project",
+    "number": 12,
+    "title": "Fix flaky contribution flow",
+    "url": "https://github.com/example/project/issues/12"
+  },
   "user": {
     "id": 1,
     "name": "Ada Lovelace",
@@ -223,11 +237,11 @@ Content-Type: application/json
 {
   "name": "Open source contribution",
   "url": "https://github.com/example/project/pull/34",
-  "description": "Fixed https://github.com/example/project/issues/12 and opened https://github.com/example/project/pull/34"
+  "description": "Fixed the assigned issue and opened https://github.com/example/project/pull/34"
 }
 ```
 
-Temporary achievement tokens embed the selected project context and are limited to those projects. If a temporary token was generated for exactly one project, `project_id` is filled automatically when omitted. If the token contains multiple projects, include either `project_id` or `project_url` in the `/achieve` request.
+Temporary achievement tokens embed the selected project and assigned issue context. `/achieve` automatically records `project_id`, `issue_url`, `issue_title`, and `issue_number` from the token.
 
 ### Achievement Dashboard
 
