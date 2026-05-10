@@ -21,6 +21,13 @@ docker compose up --build
 
 The API will be available at `http://localhost:8000`.
 
+## Run Tests
+
+```bash
+pip install -r requirements.txt
+python3 -m pytest
+```
+
 ## Environment Variables
 
 - `DATABASE_PATH`: SQLite database location. Defaults to `opensauce.db`.
@@ -113,25 +120,59 @@ Content-Type: application/json
 
 You can also delete by `url`.
 
-### Get Skills
+### Generate Skill Prompt
 
 ```http
-GET /skill
-Authorization: Bearer <oauth_token>
+POST /skill
+Content-Type: application/json
+
+{
+  "user_id": 1,
+  "project_ids": [1, 2]
+}
 ```
 
-Skills are returned from the user's achievements.
+This endpoint does not require authentication. It fetches the selected project URLs and returns SKILL.md prompt content for an agent, plus a temporary achievement token scoped to `/achieve`. If `project_ids` is missing or empty, the API randomly selects up to 3 available projects.
+
+Returns:
+
+```json
+{
+  "prompt_filename": "SKILL.md",
+  "prompt": "# Open Source Volunteer Agent\n...",
+  "temporary_auth": {
+    "oauth_token": "...",
+    "token_type": "Bearer",
+    "scope": "achievement",
+    "expires_in": 3600
+  },
+  "projects": [
+    {
+      "id": 1,
+      "url": "https://github.com/example/project",
+      "description": "A useful open source project"
+    }
+  ],
+  "user": {
+    "id": 1,
+    "name": "Ada Lovelace",
+    "username": "ada"
+  }
+}
+```
+
+`GET /skill?user_id=1&project_id=1&project_id=2` is also supported.
 
 ### Add Achievement
 
 ```http
 POST /achieve
-Authorization: Bearer <oauth_token>
+Authorization: Bearer <oauth_token-or-temporary-achievement-token>
 Content-Type: application/json
 
 {
-  "name": "Python",
-  "description": "Built and maintained Python open source services"
+  "name": "Open source contribution",
+  "description": "Fixed https://github.com/example/project/issues/12 and opened https://github.com/example/project/pull/34"
 }
 ```
 
