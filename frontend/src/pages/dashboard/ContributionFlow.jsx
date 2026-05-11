@@ -96,18 +96,10 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
     })
   }
 
-  const openInCursor = () => {
-    if (!cursorPrompt) return
+  const handleCursorClick = () => {
     navigator.clipboard?.writeText(cursorPrompt).catch(() => {})
-    const cursorUrl = `cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(cursorPrompt)}`
-    const a = document.createElement('a')
-    a.href = cursorUrl
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
     setCursorOpened(true)
     setTimeout(() => setCursorOpened(false), 2000)
-
     const project = selectedProjects[0]
     addAchievement({
       name: 'Contribution Plan Started',
@@ -116,6 +108,10 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
       url: magicUrl || undefined,
     }).catch(() => {})
   }
+
+  const cursorHref = cursorPrompt
+    ? `cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(cursorPrompt)}`
+    : undefined
 
   const canNext = step === 0 ? selected.length > 0 : true
 
@@ -314,13 +310,13 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <button
-                onClick={openInCursor}
-                disabled={!cursorPrompt}
-                className={`btn-outline px-4 py-2 text-body-sm transition-colors ${!cursorPrompt ? 'opacity-40 cursor-not-allowed' : ''}`}
+              <a
+                href={cursorHref}
+                onClick={cursorHref ? handleCursorClick : undefined}
+                className={`btn-outline px-4 py-2 text-body-sm transition-colors ${!cursorHref ? 'opacity-40 pointer-events-none' : ''}`}
               >
                 {cursorOpened ? 'Opening…' : 'Open Cursor'}
-              </button>
+              </a>
               <button
                 onClick={onClose}
                 className="bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors"
