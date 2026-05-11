@@ -252,12 +252,6 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
                       #{assignedIssue.number} {assignedIssue.title}
                     </a>
                   </div>
-                  {assignedIssue.match_reason && (
-                    <p className="text-caption text-graphite mt-1.5">
-                      <span className="font-mono text-ash-gray">Why this one →</span>{' '}
-                      {assignedIssue.match_reason}
-                    </p>
-                  )}
                 </div>
               )}
               {skillLoading ? (

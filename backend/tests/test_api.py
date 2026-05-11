@@ -355,94 +355,89 @@ def test_skill_endpoint_embeds_random_open_issue(client, monkeypatch):
     assert "https://github.com/example/project/issues/42" in payload["prompt"]
 
 
-def test_skill_endpoint_uses_llm_match_reason_when_clod_enabled(client, monkeypatch):
-    user = create_user(client)
+def test_preferences_round_trip(client):
+    create_user(client)
     token = login(client)
-    project = create_project(client, token)
+    headers = auth_headers(token)
 
-    monkeypatch.setattr(
-        "src.routes.achievements.llm.is_enabled",
-        lambda: True,
+    initial = client.get("/preferences", headers=headers)
+    assert initial.status_code == 200
+    assert initial.get_json()["preferences"] == {"categories": [], "notes": ""}
+
+    update = client.put(
+        "/preferences",
+        json={"categories": ["AI / ML", "Backend"], "notes": "I love Rust."},
+        headers=headers,
     )
-    fake_issues = [
-        {
-            "project_id": project["id"],
-            "project_url": project["url"],
-            "number": 7,
-            "title": "Bump pytest to 8.x",
-            "url": "https://github.com/example/project/issues/7",
-        },
-        {
-            "project_id": project["id"],
-            "project_url": project["url"],
-            "number": 11,
-            "title": "Add SSO via OIDC",
-            "url": "https://github.com/example/project/issues/11",
-        },
-    ]
-    monkeypatch.setattr(
-        "src.routes.achievements.fetch_open_issues",
-        lambda project_row: fake_issues,
+    assert update.status_code == 200
+    assert update.get_json()["preferences"]["categories"] == ["AI / ML", "Backend"]
+
+    after = client.get("/preferences", headers=headers).get_json()["preferences"]
+    assert after["notes"] == "I love Rust."
+
+
+def test_preferences_validates_input(client):
+    create_user(client)
+    token = login(client)
+    headers = auth_headers(token)
+
+    bad_categories = client.put(
+        "/preferences", json={"categories": "AI / ML"}, headers=headers
     )
+    assert bad_categories.status_code == 400
+
+    bad_notes = client.put(
+        "/preferences", json={"notes": 42}, headers=headers
+    )
+    assert bad_notes.status_code == 400
+
+
+def test_recommend_endpoint_returns_empty_when_llm_disabled(client, monkeypatch):
+    create_user(client)
+    token = login(client)
+    create_project(client, token)
+    monkeypatch.setattr("src.routes.projects.llm.is_enabled", lambda: False)
+
+    response = client.post(
+        "/projects/recommend", json={}, headers=auth_headers(token)
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["recommendations"] == []
+    assert payload["enabled"] is False
+
+
+def test_recommend_endpoint_uses_llm_when_enabled(client, monkeypatch):
+    create_user(client)
+    token = login(client)
+    project_a = create_project(client, token, "https://github.com/example/project-a")
+    project_b = create_project(client, token, "https://github.com/example/project-b")
+
+    monkeypatch.setattr("src.routes.projects.llm.is_enabled", lambda: True)
     monkeypatch.setattr(
-        "src.routes.achievements.llm.chat_json",
+        "src.routes.projects.llm.chat_json",
         lambda messages, **_: {
-            "chosen_index": 1,
-            "reason": "matches their auth experience",
+            "recommendations": [
+                {"project_id": project_b["id"], "reason": "matches AI / ML interest"},
+                {"project_id": 9999, "reason": "ignored: unknown id"},
+                {"project_id": project_a["id"], "reason": "fallback option"},
+            ]
         },
     )
 
     response = client.post(
-        "/skill",
-        json={"user_id": user["id"], "project_ids": [project["id"]]},
+        "/projects/recommend",
+        json={"query": "data tools"},
+        headers=auth_headers(token),
     )
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["assigned_issue"]["number"] == 11
-    assert payload["assigned_issue"]["match_reason"] == "matches their auth experience"
-
-
-def test_skill_endpoint_falls_back_to_random_when_llm_returns_garbage(client, monkeypatch):
-    user = create_user(client)
-    token = login(client)
-    project = create_project(client, token)
-
-    fake_issues = [
-        {
-            "project_id": project["id"],
-            "project_url": project["url"],
-            "number": 7,
-            "title": "Only issue available",
-            "url": "https://github.com/example/project/issues/7",
-        },
-        {
-            "project_id": project["id"],
-            "project_url": project["url"],
-            "number": 9,
-            "title": "Second issue",
-            "url": "https://github.com/example/project/issues/9",
-        },
-    ]
-    monkeypatch.setattr("src.routes.achievements.llm.is_enabled", lambda: True)
-    monkeypatch.setattr(
-        "src.routes.achievements.fetch_open_issues",
-        lambda project_row: fake_issues,
-    )
-    monkeypatch.setattr(
-        "src.routes.achievements.llm.chat_json",
-        lambda messages, **_: None,
-    )
-
-    response = client.post(
-        "/skill",
-        json={"user_id": user["id"], "project_ids": [project["id"]]},
-    )
-
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload["assigned_issue"]["number"] in {7, 9}
-    assert "match_reason" not in payload["assigned_issue"]
+    assert payload["enabled"] is True
+    ids = [r["project_id"] for r in payload["recommendations"]]
+    assert ids == [project_b["id"], project_a["id"]]
+    assert payload["recommendations"][0]["reason"] == "matches AI / ML interest"
 
 
 def test_skill_endpoint_returns_400_when_no_open_issue(client, monkeypatch):

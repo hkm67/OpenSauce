@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     github_id INTEGER UNIQUE,
+    preferences TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -53,6 +54,7 @@ MIGRATIONS = (
     "ALTER TABLE achievements ADD COLUMN issue_url TEXT",
     "ALTER TABLE achievements ADD COLUMN issue_title TEXT",
     "ALTER TABLE achievements ADD COLUMN issue_number INTEGER",
+    "ALTER TABLE users ADD COLUMN preferences TEXT",
 )
 
 DEFAULT_PROJECTS = (
@@ -148,13 +150,19 @@ def init_db():
     with transaction() as connection:
         connection.executescript(SCHEMA)
         _ensure_github_id_column(connection)
-        existing_columns = {
-            row["name"] for row in connection.execute("PRAGMA table_info(achievements)")
-        }
+        column_cache = {}
         for migration in MIGRATIONS:
+            tokens = migration.split()
+            table_name = tokens[tokens.index("TABLE") + 1]
             column_name = migration.split(" ADD COLUMN ", 1)[1].split(" ", 1)[0]
-            if column_name not in existing_columns:
+            if table_name not in column_cache:
+                column_cache[table_name] = {
+                    row["name"]
+                    for row in connection.execute(f"PRAGMA table_info({table_name})")
+                }
+            if column_name not in column_cache[table_name]:
                 connection.execute(migration)
+                column_cache[table_name].add(column_name)
         _seed_default_projects(connection)
 
 

@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 from flask import Blueprint, g, jsonify, request
@@ -10,10 +11,56 @@ from ..responses import error, require_fields
 users_bp = Blueprint("users", __name__)
 
 
+def _load_preferences(raw):
+    if not raw:
+        return {"categories": [], "notes": ""}
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return {"categories": [], "notes": ""}
+    return {
+        "categories": list(data.get("categories") or []),
+        "notes": str(data.get("notes") or ""),
+    }
+
+
 @users_bp.get("/user")
 @require_auth
 def current_user():
     return jsonify({"authenticated": True, "user": g.current_user})
+
+
+@users_bp.get("/preferences")
+@require_auth
+def get_preferences():
+    with get_connection() as connection:
+        row = connection.execute(
+            "SELECT preferences FROM users WHERE id = ?",
+            (g.current_user["id"],),
+        ).fetchone()
+    return jsonify({"preferences": _load_preferences(row["preferences"] if row else None)})
+
+
+@users_bp.put("/preferences")
+@require_auth
+def set_preferences():
+    data = request.get_json(silent=True) or {}
+
+    categories = data.get("categories", [])
+    if not isinstance(categories, list) or not all(isinstance(c, str) for c in categories):
+        return error("categories must be a list of strings")
+    notes = data.get("notes", "")
+    if not isinstance(notes, str):
+        return error("notes must be a string")
+
+    payload = json.dumps({"categories": categories[:20], "notes": notes[:1000]})
+    with transaction() as connection:
+        connection.execute(
+            "UPDATE users SET preferences = ? WHERE id = ?",
+            (payload, g.current_user["id"]),
+        )
+
+    return jsonify({"preferences": _load_preferences(payload)})
 
 
 @users_bp.post("/user")
