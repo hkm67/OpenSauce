@@ -52,14 +52,22 @@ def _project_id_by_url(connection, url):
 
 
 def _seed_demo_users(connection):
-    """Insert demo login accounts and sample achievements (idempotent)."""
+    """Insert or refresh demo accounts and sample achievements (idempotent).
+
+    UPSERT on ``username`` so password ``demo123`` and preferences stay valid
+    even if rows existed with a stale hash.
+    """
     pwd_hash = generate_password_hash(DEMO_PASSWORD, method="pbkdf2:sha256")
 
     for name, username, prefs, github_id in DEMO_USERS:
         connection.execute(
             """
-            INSERT OR IGNORE INTO users (name, username, password_hash, github_id, preferences)
+            INSERT INTO users (name, username, password_hash, github_id, preferences)
             VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(username) DO UPDATE SET
+                name = excluded.name,
+                password_hash = excluded.password_hash,
+                preferences = excluded.preferences
             """,
             (
                 name,
@@ -70,22 +78,13 @@ def _seed_demo_users(connection):
             ),
         )
 
-    demo_rows = connection.execute(
-        "SELECT id FROM users WHERE username LIKE 'demo_%'"
-    ).fetchall()
-    demo_ids = [r["id"] for r in demo_rows]
-    if not demo_ids:
-        return
-
-    placeholders = ",".join("?" * len(demo_ids))
-    already = connection.execute(
-        f"""
-        SELECT COUNT(*) AS c FROM achievements
-        WHERE user_id IN ({placeholders})
-        """,
-        demo_ids,
-    ).fetchone()["c"]
-    if already > 0:
+    user_id_by_name = {
+        r["username"]: r["id"]
+        for r in connection.execute(
+            "SELECT id, username FROM users WHERE username LIKE 'demo_%'"
+        ).fetchall()
+    }
+    if not user_id_by_name:
         return
 
     pid = lambda url: _project_id_by_url(connection, url)
@@ -183,14 +182,19 @@ def _seed_demo_users(connection):
         ),
     ]
 
-    user_id_by_name = {
-        r["username"]: r["id"]
-        for r in connection.execute(
-            "SELECT id, username FROM users WHERE username LIKE 'demo_%'"
-        ).fetchall()
-    }
+    need_achievements: set[str] = set()
+    for username in user_id_by_name:
+        uid = user_id_by_name[username]
+        n = connection.execute(
+            "SELECT COUNT(*) AS c FROM achievements WHERE user_id = ?",
+            (uid,),
+        ).fetchone()["c"]
+        if n == 0:
+            need_achievements.add(username)
 
     for username, project_id, name, url, issue_url, issue_title, issue_number in samples:
+        if username not in need_achievements:
+            continue
         if not project_id:
             continue
         uid = user_id_by_name.get(username)
@@ -215,7 +219,6 @@ def _seed_demo_users(connection):
                 issue_number,
             ),
         )
-
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
