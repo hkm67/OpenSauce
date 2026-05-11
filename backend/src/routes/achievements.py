@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 from flask import Blueprint, Response, g, jsonify, request
 
 from ..auth import create_temporary_achievement_token, require_auth, require_achievement_auth
+from ..config import PUBLIC_BASE_URL
 from ..db import get_connection, row_to_dict, transaction
 from ..github import fetch_random_open_issue
 from ..responses import error, require_fields
@@ -176,7 +177,7 @@ def _parse_project_ids(data):
         return None
 
 
-def _build_skill_prompt(projects, achievement_token):
+def _build_skill_prompt(projects, achievement_token, api_base_url):
     project_list = "\n".join(
         f"- Project {project['id']}: {project['url']} - {project['description']}"
         for project in projects
@@ -223,7 +224,7 @@ Complete one useful contribution for the assigned issue.
 11. Report the completed work back to OpenSauce by calling:
 
 ```http
-POST http://localhost:8000/achieve
+POST {api_base_url}/achieve
 Authorization: Bearer {achievement_token}
 Content-Type: application/json
 
@@ -471,9 +472,10 @@ def _build_skill_response_payload(data):
     token = create_temporary_achievement_token(
         data["user_id"], project_data, assigned_issue=assigned_issue
     )
-    prompt = _build_skill_prompt(project_data, token)
+    base_url = PUBLIC_BASE_URL or request.url_root.rstrip("/")
+    prompt = _build_skill_prompt(project_data, token, base_url)
     magic_token = _build_magic_token(data["user_id"], project_ids)
-    magic_url = f"{request.url_root.rstrip('/')}/skill.md?t={magic_token}"
+    magic_url = f"{base_url}/skill.md?t={magic_token}"
 
     return {
         "prompt_filename": "SKILL.md",

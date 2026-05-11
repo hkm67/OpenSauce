@@ -54,11 +54,20 @@ The service initializes the SQLite database automatically on startup. By default
 
 ## Run With Docker
 
+Use the **root-level** `docker-compose.yml` to run both the frontend and backend together:
+
 ```bash
+# From the repo root
+cp .env.example .env          # fill in your secrets
 docker compose up --build
 ```
 
-The API will be available at `http://localhost:8000`.
+| Service | URL |
+|---------|-----|
+| Frontend (nginx) | http://localhost:3000 |
+| Backend (API) | http://localhost:8000 |
+
+The SQLite database is persisted in the `opensauce-data` named volume.
 
 ## Run Tests
 
@@ -71,7 +80,7 @@ python3 -m coverage report -m
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` in this directory (`backend/.env`). `python-dotenv` loads it automatically.
+Copy `.env.example` (in the **repo root**) to `.env` and fill in your values. `python-dotenv` also loads `backend/.env` when running the server directly without Docker.
 
 - `DATABASE_PATH`: SQLite database location. Defaults to `opensauce.db`.
 - `SECRET_KEY`: JWT signing secret and Flask session key. Set this to a strong value in production.

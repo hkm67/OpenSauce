@@ -1,0 +1,31 @@
+services:
+  api:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      SECRET_KEY: "${SECRET_KEY}"
+      DATABASE_PATH: "/data/opensauce.db"
+      TOKEN_EXPIRES_SECONDS: "${TOKEN_EXPIRES_SECONDS:-86400}"
+      GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID}"
+      GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET}"
+      GITHUB_REDIRECT_URI: "${GITHUB_REDIRECT_URI:-http://localhost:8000/oauth/github/callback}"
+      OAUTH_SUCCESS_REDIRECT: "${OAUTH_SUCCESS_REDIRECT:-http://localhost:3000/oauth/callback}"
+      OAUTH_TOKEN_IN_FRAGMENT: "${OAUTH_TOKEN_IN_FRAGMENT:-1}"
+      # Overrides the domain used in generated SKILL.md URLs and magic links.
+      # Defaults to the API's own request host when not set.
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost:8000}"
+      # AUTH_COOKIE_SECURE: "${AUTH_COOKIE_SECURE}"
+      # OPENSAUCE_SEED_DEMO: "${OPENSAUCE_SEED_DEMO}"
+    volumes:
+      - opensauce-data:/data
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+volumes:
+  opensauce-data:

@@ -36,3 +36,8 @@ AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "").lower() in ("1", "true"
 OAUTH_JSON_RESPONSE = os.getenv("OAUTH_JSON_RESPONSE", "").lower() in ("1", "true", "yes")
 # Local frontend origin allowed to call the API with the HttpOnly auth cookie.
 CORS_ALLOWED_ORIGIN = os.getenv("CORS_ALLOWED_ORIGIN", "http://localhost:3000")
+# Public-facing base URL of this API (no trailing slash).
+# Set to the deployed domain so generated URLs (magic_url, /achieve in SKILL.md)
+# use the real host instead of the internal container address.
+# Defaults to empty string — the code falls back to Flask's request.url_root.
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
