@@ -100,7 +100,7 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
     if (!cursorPrompt) return
     navigator.clipboard.writeText(cursorPrompt)
     const cursorUrl = `cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(cursorPrompt)}`
-    window.open(cursorUrl, '_self')
+    window.location.href = cursorUrl
     setCursorOpened(true)
     setTimeout(() => setCursorOpened(false), 2000)
 
