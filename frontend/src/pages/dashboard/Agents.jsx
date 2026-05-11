@@ -1,10 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import DashboardLayout from '../../components/DashboardLayout'
 
-const MOCK_AGENTS = [
-  { id: 1, name: 'coding-agent-prod', endpoint: 'https://agent.example.com', status: 'active', tokensUsed: 61200, tokensMax: 100000, projects: 3, lastSeen: '2 min ago' },
-  { id: 2, name: 'research-agent',    endpoint: 'https://research.example.com', status: 'idle', tokensUsed: 8400, tokensMax: 50000, projects: 1, lastSeen: '1h ago' },
-]
+const STORAGE_KEY = 'opensauce.agents'
+
+function loadStoredAgents() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
 
 function StatusBadge({ status }) {
   const cls = status === 'active'
@@ -29,14 +37,32 @@ function UsageBar({ used, max }) {
 }
 
 export default function Agents() {
-  const [agents, setAgents] = useState(MOCK_AGENTS)
+  const [agents, setAgents] = useState(() => loadStoredAgents())
   const [showAdd, setShowAdd] = useState(false)
   const [newAgent, setNewAgent] = useState({ name: '', endpoint: '', apiKey: '' })
   const [selectedAgent, setSelectedAgent] = useState(null)
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(agents))
+    } catch {}
+  }, [agents])
+
   const addAgent = () => {
     if (!newAgent.name || !newAgent.endpoint) return
-    setAgents((prev) => [...prev, { id: Date.now(), name: newAgent.name, endpoint: newAgent.endpoint, status: 'idle', tokensUsed: 0, tokensMax: 100000, projects: 0, lastSeen: 'Just added' }])
+    setAgents((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        name: newAgent.name,
+        endpoint: newAgent.endpoint,
+        status: 'idle',
+        tokensUsed: 0,
+        tokensMax: 100000,
+        projects: 0,
+        addedAt: new Date().toISOString(),
+      },
+    ])
     setNewAgent({ name: '', endpoint: '', apiKey: '' })
     setShowAdd(false)
   }
@@ -124,9 +150,14 @@ export default function Agents() {
 
                 <div className="grid grid-cols-3 gap-3 mb-6">
                   {[
-                    { label: 'Status',    value: selectedAgent.status },
-                    { label: 'Projects',  value: selectedAgent.projects },
-                    { label: 'Last seen', value: selectedAgent.lastSeen },
+                    { label: 'Status',   value: selectedAgent.status },
+                    { label: 'Projects', value: selectedAgent.projects },
+                    {
+                      label: 'Added',
+                      value: selectedAgent.addedAt
+                        ? new Date(selectedAgent.addedAt).toLocaleDateString()
+                        : '—',
+                    },
                   ].map((s) => (
                     <div key={s.label} className="bg-factory-light-gray rounded p-3 text-center">
                       <p className="text-caption text-ash-gray">{s.label}</p>
@@ -138,22 +169,9 @@ export default function Agents() {
                 <div className="mb-6">
                   <p className="text-body-sm text-factory-black mb-2">Token usage</p>
                   <UsageBar used={selectedAgent.tokensUsed} max={selectedAgent.tokensMax} />
-                </div>
-
-                <div>
-                  <p className="text-body-sm text-factory-black mb-3">Activity log</p>
-                  <div className="space-y-0">
-                    {[
-                      { event: 'Donated 2,400 tokens → react/react', time: '2h ago' },
-                      { event: 'Connected and verified',             time: '3h ago' },
-                      { event: 'Idle threshold crossed (12%)',       time: '4h ago' },
-                    ].map((log, i) => (
-                      <div key={i} className="flex justify-between py-2.5 border-b border-cool-gray/30 last:border-0 text-body-sm">
-                        <span className="text-graphite">{log.event}</span>
-                        <span className="text-ash-gray font-mono">{log.time}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-caption text-ash-gray mt-2">
+                    Live agent telemetry will appear here once the agent server reports usage to OpenSauce.
+                  </p>
                 </div>
               </div>
             ) : (

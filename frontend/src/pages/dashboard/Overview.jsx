@@ -1,42 +1,56 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import DashboardLayout from '../../components/DashboardLayout'
 import BadgeCard from '../../components/BadgeCard'
 import { useAuth } from '../../contexts/AuthContext'
-import { getDashboard } from '../../api/achievements'
-import { getProjects } from '../../api/projects'
+import { getDashboard, getAchievements } from '../../api/achievements'
 import { getBadges } from '../../config/badges'
+import { categorizeProject, CATEGORY_COLORS } from '../../utils/category'
 
-// Mock category breakdown derived from project types
-const PIE_DATA = [
-  { name: 'Infrastructure', value: 32, color: '#020202' },
-  { name: 'Dev Tools',      value: 25, color: '#3d3a39' },
-  { name: 'AI / ML',        value: 20, color: '#ef6f2e' },
-  { name: 'Security',       value: 13, color: '#b8b3b0' },
-  { name: 'Frontend',       value: 10, color: '#a49d9a' },
-]
+const HEAT_COLORS = ['#eeeeee', '#fcd5b8', '#f9a96c', '#f37c2a', '#ef6f2e']
+const HEATMAP_WEEKS = 52
+const HEATMAP_DAYS = 7
 
-// Generate a 52-week × 7-day heatmap grid (mock, seeded from contributions)
-function generateHeatmap(totalContributions) {
-  const weeks = 52
-  const days = 7
+function startOfDay(date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function buildHeatmap(achievements) {
+  const today = startOfDay(new Date())
+  const start = new Date(today)
+  start.setDate(today.getDate() - (HEATMAP_WEEKS * HEATMAP_DAYS - 1))
+  start.setDate(start.getDate() - start.getDay())
+
+  const counts = new Map()
+  for (const a of achievements) {
+    if (!a.created_at) continue
+    const d = startOfDay(a.created_at)
+    if (Number.isNaN(d.getTime())) continue
+    const key = d.toISOString().slice(0, 10)
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+
   const grid = []
-  const seed = totalContributions || 4
-  for (let w = 0; w < weeks; w++) {
+  let max = 0
+  counts.forEach((v) => { if (v > max) max = v })
+
+  for (let w = 0; w < HEATMAP_WEEKS; w++) {
     const week = []
-    for (let d = 0; d < days; d++) {
-      const rand = Math.abs(Math.sin(w * 7 + d + seed * 13))
-      const active = rand > 0.55
-      const intensity = active ? Math.ceil(rand * 4) : 0
+    for (let d = 0; d < HEATMAP_DAYS; d++) {
+      const cell = new Date(start)
+      cell.setDate(start.getDate() + w * HEATMAP_DAYS + d)
+      const key = cell.toISOString().slice(0, 10)
+      const count = counts.get(key) || 0
+      const intensity = max === 0 ? 0 : Math.min(4, Math.ceil((count / max) * 4))
       week.push(intensity)
     }
     grid.push(week)
   }
   return grid
 }
-
-const HEAT_COLORS = ['#eeeeee', '#fcd5b8', '#f9a96c', '#f37c2a', '#ef6f2e']
 
 function HeatmapCell({ intensity }) {
   return (
@@ -48,10 +62,10 @@ function HeatmapCell({ intensity }) {
 }
 
 const WEEKLY_MISSIONS = [
-  { id: 1, title: 'Make 5 contributions',       badge: '🔥', target: 5,  metric: 'contributions' },
-  { id: 2, title: 'Contribute to 3 projects',   badge: '🔧', target: 3,  metric: 'projects' },
-  { id: 3, title: 'Reach Builder level',        badge: '⚡', target: 5,  metric: 'level' },
-  { id: 4, title: 'Earn 3 badges',              badge: '🏅', target: 3,  metric: 'badges' },
+  { id: 1, title: 'Make 5 contributions',     badge: '🔥', target: 5,  metric: 'contributions' },
+  { id: 2, title: 'Contribute to 3 projects', badge: '🔧', target: 3,  metric: 'projects' },
+  { id: 3, title: 'Reach Builder level',      badge: '⚡', target: 5,  metric: 'level' },
+  { id: 4, title: 'Earn 3 badges',            badge: '🏅', target: 3,  metric: 'badges' },
 ]
 
 function MissionRow({ mission, progress, target }) {
@@ -88,11 +102,13 @@ const CustomTooltip = ({ active, payload }) => {
 
 export default function Overview() {
   const { user } = useAuth()
-  const [projects, setProjects] = useState([])
+  const [achievements, setAchievements] = useState([])
   const [myContributions, setMyContributions] = useState(0)
 
   useEffect(() => {
-    getProjects().then((r) => setProjects(r.data.projects || [])).catch(() => {})
+    getAchievements({ limit: 100, sort: 'recent' })
+      .then((r) => setAchievements(r.data.achievements || []))
+      .catch(() => setAchievements([]))
     getDashboard(50)
       .then((r) => {
         const entry = r.data.windows.monthly.top_users.find(
@@ -103,21 +119,50 @@ export default function Overview() {
       .catch(() => {})
   }, [user?.username])
 
-  const badges = getBadges(myContributions)
-  const earnedCount = badges.filter((b) => b.earned).length
-  const heatmap = generateHeatmap(myContributions)
+  const myAchievementsCount = achievements.length
+  const totalContributions = Math.max(myContributions, myAchievementsCount)
 
-  // Derive mission progress from real + mock data
+  const projectsContributedTo = useMemo(() => {
+    const ids = new Set(achievements.map((a) => a.project_id).filter(Boolean))
+    return ids.size
+  }, [achievements])
+
+  const issuesCompleted = useMemo(
+    () => achievements.filter((a) => a.issue_url).length,
+    [achievements]
+  )
+
+  const pieData = useMemo(() => {
+    if (achievements.length === 0) return []
+    const counts = new Map()
+    for (const a of achievements) {
+      const cat = categorizeProject({
+        url: a.project_url || '',
+        description: a.project_description || '',
+      })
+      counts.set(cat, (counts.get(cat) || 0) + 1)
+    }
+    const total = achievements.length
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({
+        name,
+        value: Math.round((count / total) * 100),
+        color: CATEGORY_COLORS[name] || CATEGORY_COLORS.Other,
+      }))
+      .sort((a, b) => b.value - a.value)
+  }, [achievements])
+
+  const heatmap = useMemo(() => buildHeatmap(achievements), [achievements])
+
+  const badges = getBadges(totalContributions)
+  const earnedCount = badges.filter((b) => b.earned).length
+
   const missionProgress = {
-    contributions: myContributions,
-    projects: Math.min(projects.length, myContributions),
-    level: myContributions,
+    contributions: totalContributions,
+    projects: projectsContributedTo,
+    level: totalContributions,
     badges: earnedCount,
   }
-
-  // Mock stats derived loosely from contribution count
-  const statsPushed = Math.max(0, myContributions * 3 + 2)
-  const statsMerged = Math.max(0, Math.floor(myContributions * 1.5))
 
   return (
     <DashboardLayout>
@@ -154,42 +199,48 @@ export default function Overview() {
               {/* Pie chart */}
               <div className="card">
                 <h2 className="text-body text-factory-black mb-4">Contributions by Category</h2>
-                <div className="flex items-center gap-4">
-                  <ResponsiveContainer width={120} height={120}>
-                    <PieChart>
-                      <Pie
-                        data={PIE_DATA}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={32}
-                        outerRadius={55}
-                        dataKey="value"
-                        strokeWidth={0}
-                      >
-                        {PIE_DATA.map((entry) => (
-                          <Cell key={entry.name} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip content={<CustomTooltip />} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="space-y-1.5 flex-1 min-w-0">
-                    {PIE_DATA.map((d) => (
-                      <div key={d.name} className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                        <span className="text-caption text-graphite truncate">{d.name}</span>
-                        <span className="text-caption font-mono text-ash-gray ml-auto">{d.value}%</span>
-                      </div>
-                    ))}
+                {pieData.length === 0 ? (
+                  <p className="text-caption text-ash-gray py-8 text-center">
+                    No contributions yet. Start one to see your category mix.
+                  </p>
+                ) : (
+                  <div className="flex items-center gap-4">
+                    <ResponsiveContainer width={120} height={120}>
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={32}
+                          outerRadius={55}
+                          dataKey="value"
+                          strokeWidth={0}
+                        >
+                          {pieData.map((entry) => (
+                            <Cell key={entry.name} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<CustomTooltip />} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      {pieData.map((d) => (
+                        <div key={d.name} className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                          <span className="text-caption text-graphite truncate">{d.name}</span>
+                          <span className="text-caption font-mono text-ash-gray ml-auto">{d.value}%</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Heatmap */}
               <div className="card">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-body text-factory-black">Contribution Activity</h2>
-                  <span className="text-caption text-ash-gray font-mono">{myContributions} total</span>
+                  <span className="text-caption text-ash-gray font-mono">{totalContributions} total</span>
                 </div>
                 <div className="overflow-x-auto">
                   <div className="flex gap-0.5">
@@ -215,16 +266,16 @@ export default function Overview() {
             {/* Data cards */}
             <div className="grid grid-cols-3 gap-3">
               <div className="card text-center py-4">
-                <p className="text-heading font-mono font-normal text-factory-black">{projects.length}</p>
+                <p className="text-heading font-mono font-normal text-factory-black">{projectsContributedTo}</p>
                 <p className="text-caption text-ash-gray mt-1">Projects contributed</p>
               </div>
               <div className="card text-center py-4">
-                <p className="text-heading font-mono font-normal text-code-orange">{statsPushed}</p>
-                <p className="text-caption text-ash-gray mt-1">Repos pushed</p>
+                <p className="text-heading font-mono font-normal text-code-orange">{totalContributions}</p>
+                <p className="text-caption text-ash-gray mt-1">Total contributions</p>
               </div>
               <div className="card text-center py-4">
-                <p className="text-heading font-mono font-normal text-factory-black">{statsMerged}</p>
-                <p className="text-caption text-ash-gray mt-1">PRs merged</p>
+                <p className="text-heading font-mono font-normal text-factory-black">{issuesCompleted}</p>
+                <p className="text-caption text-ash-gray mt-1">Issues addressed</p>
               </div>
             </div>
 

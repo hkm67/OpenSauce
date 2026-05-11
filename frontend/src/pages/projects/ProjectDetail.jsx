@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useLocation, Link } from 'react-router-dom'
 import Navbar from '../../components/Navbar'
 import Footer from '../../components/Footer'
 import { getProjects } from '../../api/projects'
+import { getAchievements } from '../../api/achievements'
 import { createActivity } from '../../api/activities'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -14,11 +15,17 @@ function extractRepoInfo(url) {
   return { owner: null, repo: url }
 }
 
-const MOCK_ACTIVITY = [
-  { event: 'Agent donated 2,400 tokens', agent: 'coding-agent-prod', time: '2h ago' },
-  { event: 'PR #8821 reviewed by agent', agent: 'research-agent',    time: '5h ago' },
-  { event: 'Project added to marketplace', agent: 'system',           time: '3d ago' },
-]
+function timeAgo(dateStr) {
+  if (!dateStr) return ''
+  const diff = Date.now() - new Date(dateStr).getTime()
+  if (Number.isNaN(diff)) return ''
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
 
 export default function ProjectDetail() {
   const { id } = useParams()
@@ -29,6 +36,8 @@ export default function ProjectDetail() {
   const [contribUrl, setContribUrl] = useState('')
   const [contribSuccess, setContribSuccess] = useState(false)
   const [contribError, setContribError] = useState('')
+  const [activity, setActivity] = useState([])
+  const [activityTotal, setActivityTotal] = useState(0)
 
   useEffect(() => {
     if (!project) {
@@ -38,6 +47,30 @@ export default function ProjectDetail() {
         .finally(() => setLoading(false))
     }
   }, [id, project])
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setActivity([])
+      setActivityTotal(0)
+      return
+    }
+    getAchievements({ project_id: id, limit: 10, sort: 'recent' })
+      .then((r) => {
+        setActivity(r.data.achievements || [])
+        setActivityTotal(r.data.pagination?.total ?? (r.data.achievements || []).length)
+      })
+      .catch(() => {
+        setActivity([])
+        setActivityTotal(0)
+      })
+  }, [id, isAuthenticated, contribSuccess])
+
+  const contributorCount = useMemo(() => {
+    return new Set(activity.map((a) => a.user_id).filter(Boolean)).size
+  }, [activity])
+  const issuesAddressed = useMemo(() => {
+    return activity.filter((a) => a.issue_url).length
+  }, [activity])
 
   const handleContribute = async (e) => {
     e.preventDefault()
@@ -109,32 +142,15 @@ export default function ProjectDetail() {
             {/* Contribution stats */}
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'Tokens received', value: '14,200' },
-                { label: 'Agents helped',   value: '8' },
-                { label: 'PRs assisted',    value: '12' },
+                { label: 'Contributions', value: activityTotal },
+                { label: 'Contributors',  value: contributorCount },
+                { label: 'Issues addressed', value: issuesAddressed },
               ].map((s) => (
                 <div key={s.label} className="card text-center">
                   <p className="text-caption text-ash-gray mb-1">{s.label}</p>
                   <p className="text-body text-factory-black font-mono">{s.value}</p>
                 </div>
               ))}
-            </div>
-
-            {/* Task queue */}
-            <div className="card">
-              <h2 className="text-body text-factory-black mb-4">Token Request & Task Queue</h2>
-              <div className="space-y-0">
-                {[
-                  { task: 'Review open issues and triage by priority',         tokens: '2,000' },
-                  { task: 'Generate documentation for undocumented functions', tokens: '5,000' },
-                  { task: 'Write tests for core utilities',                    tokens: '3,500' },
-                ].map((t, i) => (
-                  <div key={i} className="flex items-center justify-between py-3 border-b border-cool-gray/30 last:border-0">
-                    <span className="text-body-sm text-factory-black">{t.task}</span>
-                    <span className="text-body-sm text-code-orange font-mono ml-4 shrink-0">{t.tokens} tokens</span>
-                  </div>
-                ))}
-              </div>
             </div>
 
             {/* Contribute + activity */}
@@ -166,17 +182,52 @@ export default function ProjectDetail() {
 
               <div className="card">
                 <h2 className="text-body-sm text-factory-black mb-4">Activity Feed</h2>
-                <div className="space-y-0">
-                  {MOCK_ACTIVITY.map((item, i) => (
-                    <div key={i} className="flex items-start gap-3 py-3 border-b border-cool-gray/30 last:border-0">
-                      <span className="text-caption text-ash-gray shrink-0 font-mono mt-0.5">↑</span>
-                      <div>
-                        <p className="text-body-sm text-factory-black">{item.event}</p>
-                        <p className="text-caption text-ash-gray">by {item.agent} · {item.time}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                {!isAuthenticated ? (
+                  <p className="text-caption text-ash-gray py-4 text-center">
+                    Sign in to see recent contributions on this project.
+                  </p>
+                ) : activity.length === 0 ? (
+                  <p className="text-caption text-ash-gray py-4 text-center">
+                    No contributions logged yet. Be the first.
+                  </p>
+                ) : (
+                  <div className="space-y-0">
+                    {activity.map((item) => {
+                      const label =
+                        item.issue_title ||
+                        item.name ||
+                        item.description ||
+                        'Contribution recorded'
+                      const href = item.url || item.issue_url
+                      return (
+                        <div key={item.id} className="flex items-start gap-3 py-3 border-b border-cool-gray/30 last:border-0">
+                          <span className="text-caption text-ash-gray shrink-0 font-mono mt-0.5">↑</span>
+                          <div className="min-w-0 flex-1">
+                            {href ? (
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-body-sm text-factory-black truncate block hover:underline"
+                                title={label}
+                              >
+                                {label}
+                              </a>
+                            ) : (
+                              <p className="text-body-sm text-factory-black truncate" title={label}>
+                                {label}
+                              </p>
+                            )}
+                            <p className="text-caption text-ash-gray">
+                              {item.issue_number ? `#${item.issue_number} · ` : ''}
+                              {timeAgo(item.created_at)}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 

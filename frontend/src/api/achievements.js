@@ -13,3 +13,6 @@ export const fetchSkillPrompt = (userId, projectIds) => {
 
 export const getDashboard = (topN = 50) =>
   client.get(`/achievement/dashboard?top_n=${topN}`)
+
+export const getAchievements = (params = {}) =>
+  client.get('/achievements', { params })
