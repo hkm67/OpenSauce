@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 
 from werkzeug.security import generate_password_hash
 
@@ -9,6 +10,11 @@ from .config import DATABASE_PATH
 
 
 DEMO_PASSWORD = "demo123"
+DEMO_MIN_ACHIEVEMENTS = 5
+
+
+def _ago(days: int) -> str:
+    return (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
 
 DEMO_USERS = (
     (
