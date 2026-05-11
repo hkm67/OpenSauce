@@ -17,9 +17,9 @@ from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "openai/gpt-4o-mini"
+DEFAULT_MODEL = "anthropic/claude-3-haiku-20240307"
 DEFAULT_BASE_URL = "https://api.clod.io/v1"
-DEFAULT_TIMEOUT = 20
+DEFAULT_TIMEOUT = 6
 
 
 def _config():
@@ -30,7 +30,19 @@ def _config():
     }
 
 
+def _truthy(value: str) -> bool:
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
 def is_enabled() -> bool:
+    """LLM is on only when both an API key is set AND the global flag is on.
+
+    The flag (``CLOD_ENABLED``) lets demos turn the LLM off without removing
+    the key from ``.env``. Defaults to off so the contribution flow stays
+    snappy when nobody has explicitly opted in.
+    """
+    if not _truthy(os.getenv("CLOD_ENABLED", "")):
+        return False
     return bool(_config()["api_key"])
 
 
