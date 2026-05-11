@@ -1,45 +1,13 @@
-import json
 import sqlite3
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, jsonify, request
 
-from .. import llm
 from ..auth import require_auth
 from ..db import get_connection, row_to_dict, transaction
 from ..responses import error, require_fields
 
 
 projects_bp = Blueprint("projects", __name__)
-
-
-def _load_user_preferences(connection, user_id):
-    row = connection.execute(
-        "SELECT preferences FROM users WHERE id = ?",
-        (user_id,),
-    ).fetchone()
-    if not row or not row["preferences"]:
-        return {"categories": [], "notes": ""}
-    try:
-        data = json.loads(row["preferences"])
-    except (TypeError, ValueError):
-        return {"categories": [], "notes": ""}
-    return {
-        "categories": list(data.get("categories") or []),
-        "notes": str(data.get("notes") or ""),
-    }
-
-
-def _user_skill_names(connection, user_id, limit=15):
-    rows = connection.execute(
-        """
-        SELECT name FROM achievements
-        WHERE user_id = ? AND name IS NOT NULL AND name != ''
-        ORDER BY id DESC
-        LIMIT ?
-        """,
-        (user_id, limit),
-    ).fetchall()
-    return [row["name"] for row in rows]
 
 
 @projects_bp.get("/projects")
@@ -80,86 +48,6 @@ def create_project():
     return jsonify(
         {"id": project_id, "url": data["url"], "description": data["description"]}
     ), 201
-
-
-@projects_bp.post("/projects/recommend")
-@require_auth
-def recommend_projects():
-    data = request.get_json(silent=True) or {}
-    extra_query = str(data.get("query") or "").strip()
-    limit = max(1, min(int(data.get("limit") or 5), 10))
-
-    with get_connection() as connection:
-        prefs = _load_user_preferences(connection, g.current_user["id"])
-        skills = _user_skill_names(connection, g.current_user["id"])
-        projects = connection.execute(
-            "SELECT id, url, description FROM projects ORDER BY id"
-        ).fetchall()
-
-    project_data = [row_to_dict(p) for p in projects]
-    if not project_data or not llm.is_enabled():
-        return jsonify({"recommendations": [], "enabled": llm.is_enabled()})
-
-    catalog_lines = "\n".join(
-        f"{p['id']}. [{p['url']}] {p['description'][:200]}" for p in project_data
-    )
-    prefs_line = (
-        f"Preferred categories: {', '.join(prefs['categories']) or 'none specified'}.\n"
-        f"Notes from contributor: {prefs['notes'] or 'none'}."
-    )
-    skills_line = (
-        f"Recent skills/tags: {', '.join(skills) or 'no past contributions yet'}."
-    )
-    query_line = f"\nAd-hoc focus for this request: {extra_query}" if extra_query else ""
-
-    response = llm.chat_json(
-        [
-            {
-                "role": "system",
-                "content": (
-                    "You recommend open source projects to a contributor. "
-                    "Pick the best matches from the provided catalog. Respond ONLY "
-                    "with JSON of shape {\"recommendations\": "
-                    "[{\"project_id\": <int>, \"reason\": <one short sentence>}]}. "
-                    f"Return at most {limit} items, ranked best first."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"{prefs_line}\n{skills_line}{query_line}\n\n"
-                    f"Catalog (id. [url] description):\n{catalog_lines}"
-                ),
-            },
-        ],
-        max_tokens=600,
-    )
-
-    if not isinstance(response, dict):
-        return jsonify({"recommendations": [], "enabled": True})
-
-    valid_ids = {p["id"] for p in project_data}
-    recs = []
-    for item in response.get("recommendations") or []:
-        if not isinstance(item, dict):
-            continue
-        try:
-            pid = int(item.get("project_id"))
-        except (TypeError, ValueError):
-            continue
-        if pid not in valid_ids:
-            continue
-        reason = item.get("reason")
-        recs.append(
-            {
-                "project_id": pid,
-                "reason": reason.strip() if isinstance(reason, str) else "",
-            }
-        )
-        if len(recs) >= limit:
-            break
-
-    return jsonify({"recommendations": recs, "enabled": True})
 
 
 @projects_bp.delete("/project")

@@ -1,24 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
 import ProjectCard from '../../components/ProjectCard'
 import ContributionFlow from './ContributionFlow'
-import { getProjects, recommendProjects } from '../../api/projects'
-import { useAuth } from '../../contexts/AuthContext'
+import { getProjects } from '../../api/projects'
 import { CATEGORIES as TAXONOMY, categorizeProject } from '../../utils/category'
 
 const CATEGORIES = ['All', ...TAXONOMY]
 
 export default function Marketplace() {
-  const { isAuthenticated } = useAuth()
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const [showFlow, setShowFlow] = useState(false)
   const [preselect, setPreselect] = useState(null)
-  const [recs, setRecs] = useState([])
-  const [recsState, setRecsState] = useState('idle') // idle | loading | ready | disabled
   const location = useLocation()
 
   useEffect(() => {
@@ -33,28 +29,6 @@ export default function Marketplace() {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setRecs([])
-      setRecsState('idle')
-      return
-    }
-    setRecsState('loading')
-    recommendProjects({ limit: 5 })
-      .then((r) => {
-        const items = r.data.recommendations || []
-        setRecs(items)
-        setRecsState(r.data.enabled === false ? 'disabled' : 'ready')
-      })
-      .catch(() => setRecsState('idle'))
-  }, [isAuthenticated])
-
-  const recById = useMemo(() => {
-    const m = new Map()
-    recs.forEach((r) => m.set(r.project_id, r.reason))
-    return m
-  }, [recs])
-
   const filtered = projects.filter((p) => {
     const q = search.toLowerCase()
     const hay = `${p.url} ${p.description}`.toLowerCase()
@@ -62,10 +36,6 @@ export default function Marketplace() {
     if (category !== 'All' && categorizeProject(p) !== category) return false
     return true
   })
-
-  const recommendedProjects = recs
-    .map((r) => projects.find((p) => p.id === r.project_id))
-    .filter(Boolean)
 
   return (
     <DashboardLayout>
@@ -108,45 +78,6 @@ export default function Marketplace() {
             ))}
           </div>
         </div>
-
-        {/* Recommended for you */}
-        {isAuthenticated && (recsState === 'loading' || recommendedProjects.length > 0 || recsState === 'disabled') && (
-          <div className="mb-6">
-            <div className="flex items-baseline justify-between mb-3">
-              <h2 className="text-body text-factory-black">
-                Recommended for you
-              </h2>
-              <Link to="/settings" className="text-caption text-ash-gray hover:text-factory-black transition-colors">
-                Tune preferences →
-              </Link>
-            </div>
-            {recsState === 'loading' && (
-              <p className="text-caption text-ash-gray font-mono">Picking matches…</p>
-            )}
-            {recsState === 'disabled' && (
-              <p className="text-caption text-ash-gray">
-                Smart recommendations are disabled. Set <span className="font-mono">CLOD_ENABLED=1</span> to turn them on.
-              </p>
-            )}
-            {recommendedProjects.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {recommendedProjects.map((project) => (
-                  <div key={project.id} className="space-y-1">
-                    <ProjectCard
-                      project={project}
-                      onClick={() => { setPreselect(project.id); setShowFlow(true) }}
-                    />
-                    {recById.get(project.id) && (
-                      <p className="text-caption text-graphite px-1">
-                        <span className="font-mono text-ash-gray">why →</span> {recById.get(project.id)}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         <p className="text-caption text-ash-gray mb-5 font-mono">
           {loading ? 'Loading…' : `${filtered.length} project${filtered.length !== 1 ? 's' : ''}`}
