@@ -1,7 +1,220 @@
+import json
+import os
 import sqlite3
 from contextlib import contextmanager
 
+from werkzeug.security import generate_password_hash
+
 from .config import DATABASE_PATH
+
+
+DEMO_PASSWORD = "demo123"
+
+DEMO_USERS = (
+    (
+        "Alice Chen",
+        "demo_alice",
+        {"categories": ["Backend", "Infrastructure"], "notes": "Interested in APIs, Go, and networking."},
+        None,
+    ),
+    (
+        "Bob Martinez",
+        "demo_bob",
+        {"categories": ["Frontend", "Dev Tools"], "notes": "React, TypeScript, and DX tooling."},
+        None,
+    ),
+    (
+        "Carol Nguyen",
+        "demo_carol",
+        {"categories": ["AI / ML"], "notes": "Vectors, embeddings, and ML infra."},
+        None,
+    ),
+    (
+        "David Okonkwo",
+        "demo_david",
+        {"categories": ["Infrastructure", "Security"], "notes": "Kubernetes, TLS, and auth flows."},
+        None,
+    ),
+    (
+        "Eve Johansson",
+        "demo_eve",
+        {"categories": ["Dev Tools", "Backend"], "notes": "Rust search engines and CLI tooling."},
+        None,
+    ),
+)
+
+
+def _project_id_by_url(connection, url):
+    row = connection.execute(
+        "SELECT id FROM projects WHERE url = ?", (url,)
+    ).fetchone()
+    return row["id"] if row else None
+
+
+def _seed_demo_users(connection):
+    """Insert demo login accounts and sample achievements (idempotent)."""
+    pwd_hash = generate_password_hash(DEMO_PASSWORD, method="pbkdf2:sha256")
+
+    for name, username, prefs, github_id in DEMO_USERS:
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO users (name, username, password_hash, github_id, preferences)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                username,
+                pwd_hash,
+                github_id,
+                json.dumps(prefs),
+            ),
+        )
+
+    demo_rows = connection.execute(
+        "SELECT id FROM users WHERE username LIKE 'demo_%'"
+    ).fetchall()
+    demo_ids = [r["id"] for r in demo_rows]
+    if not demo_ids:
+        return
+
+    placeholders = ",".join("?" * len(demo_ids))
+    already = connection.execute(
+        f"""
+        SELECT COUNT(*) AS c FROM achievements
+        WHERE user_id IN ({placeholders})
+        """,
+        demo_ids,
+    ).fetchone()["c"]
+    if already > 0:
+        return
+
+    pid = lambda url: _project_id_by_url(connection, url)
+
+    samples = [
+        (
+            "demo_alice",
+            pid("https://github.com/caddyserver/caddy/"),
+            "TLS reload edge case",
+            "https://github.com/caddyserver/caddy/pull/6000",
+            "https://github.com/caddyserver/caddy/issues/5900",
+            "Reload fails under systemd notify",
+            5900,
+        ),
+        (
+            "demo_alice",
+            pid("https://github.com/micronaut-projects/micronaut-core/"),
+            "Micronaut HTTP client metrics",
+            "https://github.com/micronaut-projects/micronaut-core/pull/9900",
+            None,
+            None,
+            None,
+        ),
+        (
+            "demo_bob",
+            pid("https://github.com/hoppscotch/hoppscotch/"),
+            "Hoppscotch collection export UI",
+            "https://github.com/hoppscotch/hoppscotch/pull/4200",
+            "https://github.com/hoppscotch/hoppscotch/issues/4100",
+            "Export modal accessibility",
+            4100,
+        ),
+        (
+            "demo_bob",
+            pid("https://github.com/strapi/strapi/"),
+            "Strapi admin plugin typings",
+            "https://github.com/strapi/strapi/pull/19000",
+            None,
+            None,
+            None,
+        ),
+        (
+            "demo_carol",
+            pid("https://github.com/milvus-io/milvus/"),
+            "Milvus index benchmark notes",
+            "https://github.com/milvus-io/milvus/pull/28000",
+            "https://github.com/milvus-io/milvus/issues/27500",
+            "IVF_FLAT recall regression",
+            27500,
+        ),
+        (
+            "demo_carol",
+            pid("https://github.com/apache/superset/"),
+            "Superset chart plugin skeleton",
+            "https://github.com/apache/superset/pull/26000",
+            None,
+            None,
+            None,
+        ),
+        (
+            "demo_david",
+            pid("https://github.com/treeverse/lakeFS/"),
+            "lakeFS merge conflict docs",
+            "https://github.com/treeverse/lakeFS/pull/7200",
+            None,
+            None,
+            None,
+        ),
+        (
+            "demo_david",
+            pid("https://github.com/directus/directus/"),
+            "Directus OAuth scope docs",
+            "https://github.com/directus/directus/pull/21000",
+            "https://github.com/directus/directus/issues/20500",
+            "Document OIDC scopes",
+            20500,
+        ),
+        (
+            "demo_eve",
+            pid("https://github.com/meilisearch/meilisearch/"),
+            "Meilisearch typo tolerance test",
+            "https://github.com/meilisearch/meilisearch/pull/4500",
+            None,
+            None,
+            None,
+        ),
+        (
+            "demo_eve",
+            pid("https://github.com/novuhq/novu/"),
+            "Novu workflow trigger example",
+            "https://github.com/novuhq/novu/pull/5100",
+            "https://github.com/novuhq/novu/issues/5000",
+            "Add idempotent trigger API sample",
+            5000,
+        ),
+    ]
+
+    user_id_by_name = {
+        r["username"]: r["id"]
+        for r in connection.execute(
+            "SELECT id, username FROM users WHERE username LIKE 'demo_%'"
+        ).fetchall()
+    }
+
+    for username, project_id, name, url, issue_url, issue_title, issue_number in samples:
+        if not project_id:
+            continue
+        uid = user_id_by_name.get(username)
+        if not uid:
+            continue
+        connection.execute(
+            """
+            INSERT INTO achievements (
+                user_id, project_id, name, description, url,
+                issue_url, issue_title, issue_number
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                uid,
+                project_id,
+                name,
+                None,
+                url,
+                issue_url,
+                issue_title,
+                issue_number,
+            ),
+        )
 
 
 SCHEMA = """
@@ -164,6 +377,8 @@ def init_db():
                 connection.execute(migration)
                 column_cache[table_name].add(column_name)
         _seed_default_projects(connection)
+        if os.getenv("OPENSAUCE_SEED_DEMO", "").lower() in ("1", "true", "yes"):
+            _seed_demo_users(connection)
 
 
 def row_to_dict(row):

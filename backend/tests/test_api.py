@@ -12,6 +12,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("SECRET_KEY", "test-secret")
     monkeypatch.setenv("CLOD_API_KEY", "")
+    monkeypatch.setenv("OPENSAUCE_SEED_DEMO", "0")
 
     for module_name in list(sys.modules):
         if module_name == "src" or module_name.startswith("src."):
@@ -1139,6 +1140,7 @@ def test_init_db_migrates_legacy_achievement_schema(tmp_path, monkeypatch):
     connection.close()
 
     monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("OPENSAUCE_SEED_DEMO", "0")
     for module_name in list(sys.modules):
         if module_name == "src" or module_name.startswith("src."):
             sys.modules.pop(module_name)
