@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+
 function extractRepoInfo(url) {
   try {
     const match = url.match(/github\.com\/([^/]+)\/([^/?\s]+)/)
@@ -6,8 +8,22 @@ function extractRepoInfo(url) {
   return { owner: null, repo: url }
 }
 
+function formatStars(n) {
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  return String(n)
+}
+
 export default function ProjectCard({ project, onClick }) {
   const { owner, repo } = extractRepoInfo(project.url)
+  const [stars, setStars] = useState(null)
+
+  useEffect(() => {
+    if (!owner || !repo) return
+    fetch(`https://api.github.com/repos/${owner}/${repo}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.stargazers_count != null) setStars(data.stargazers_count) })
+      .catch(() => {})
+  }, [owner, repo])
 
   return (
     <div
@@ -35,9 +51,17 @@ export default function ProjectCard({ project, onClick }) {
         >
           github.com ↗
         </a>
-        <span className="text-caption text-ash-gray">
-          {new Date(project.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-        </span>
+        <div className="flex items-center gap-3">
+          {stars !== null && (
+            <span className="flex items-center gap-1 text-caption text-ash-gray">
+              <span>☆</span>
+              <span className="font-mono">{formatStars(stars)}</span>
+            </span>
+          )}
+          <span className="text-caption text-ash-gray">
+            {new Date(project.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </span>
+        </div>
       </div>
     </div>
   )

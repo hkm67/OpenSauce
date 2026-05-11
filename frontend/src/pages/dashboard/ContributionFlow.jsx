@@ -1,23 +1,32 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { getSkills, fetchSkillPrompt } from '../../api/achievements'
+import { getSkills, fetchSkillPrompt, addAchievement } from '../../api/achievements'
 
-const STEPS = ['Select Projects', 'Set Rules', 'Your Prompt']
+const STEPS_DEFAULT  = ['Select Projects', 'Your Prompt']
+const STEPS_PRESELECT = ['Project', 'Your Prompt']
+
+const CATEGORIES = ['All', 'Infrastructure', 'Dev Tools', 'AI / ML', 'Security', 'Frontend', 'Backend']
+
+const CATEGORY_KEYWORDS = {
+  'Infrastructure': ['infrastructure', 'devops', 'cloud', 'kubernetes', 'docker', 'container', 'server', 'deploy', 'platform'],
+  'Dev Tools':      ['tool', 'cli', 'sdk', 'ide', 'editor', 'build', 'lint', 'test', 'debug', 'workflow', 'automation'],
+  'AI / ML':        ['ai', 'ml', 'machine learning', 'neural', 'model', 'llm', 'gpt', 'vector', 'embedding', 'data'],
+  'Security':       ['security', 'auth', 'crypto', 'encryption', 'ssl', 'tls', 'vulnerability', 'permission', 'oauth'],
+  'Frontend':       ['frontend', 'ui', 'react', 'vue', 'angular', 'css', 'html', 'web', 'design', 'component', 'interface'],
+  'Backend':        ['backend', 'api', 'database', 'db', 'sql', 'rest', 'graphql', 'microservice', 'service', 'notification'],
+}
 
 function extractRepo(url) {
   const m = url.match(/github\.com\/(.+)/)
   return m ? m[1].replace(/\/$/, '') : url
 }
 
-export default function ContributionFlow({ projects, onClose }) {
+export default function ContributionFlow({ projects, onClose, preselect = null }) {
   const { user } = useAuth()
   const [step, setStep] = useState(0)
   const [skills, setSkills] = useState([])
-  const [selected, setSelected] = useState([])
-  const [mode, setMode] = useState('manual')
-  const [startTime, setStartTime] = useState('')
-  const [endTime, setEndTime] = useState('')
-  const [maxTokens, setMaxTokens] = useState('')
+  const [selected, setSelected] = useState(preselect ? [preselect] : [])
+  const [category, setCategory] = useState('All')
   const [copied, setCopied] = useState(false)
   const [cursorOpened, setCursorOpened] = useState(false)
   const [skillLoading, setSkillLoading] = useState(false)
@@ -30,9 +39,9 @@ export default function ContributionFlow({ projects, onClose }) {
     getSkills().then((r) => setSkills(r.data.skills || [])).catch(() => {})
   }, [])
 
-  // Call /skill when entering step 2
+  // Call /skill when entering step 1
   useEffect(() => {
-    if (step !== 2) return
+    if (step !== 1) return
     setSkillLoading(true)
     setSkillError('')
     setSkillPrompt('')
@@ -59,12 +68,17 @@ export default function ContributionFlow({ projects, onClose }) {
   }
 
   const toggleProject = (id) =>
-    setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+    setSelected((prev) => prev.includes(id) ? [] : [id])
 
   const pickRandom = () => {
     const idx = Math.floor(Math.random() * projects.length)
     setSelected([projects[idx].id])
   }
+
+  const filteredProjects = (category === 'All' ? projects : projects.filter((p) => {
+    const haystack = (p.url + ' ' + p.description).toLowerCase()
+    return (CATEGORY_KEYWORDS[category] || []).some((kw) => haystack.includes(kw))
+  })).slice().sort((a, b) => (isRecommended(b) ? 1 : 0) - (isRecommended(a) ? 1 : 0))
 
   const selectedProjects = projects.filter((p) => selected.includes(p.id))
 
@@ -89,12 +103,17 @@ export default function ContributionFlow({ projects, onClose }) {
     window.open(cursorUrl, '_self')
     setCursorOpened(true)
     setTimeout(() => setCursorOpened(false), 2000)
+
+    const project = selectedProjects[0]
+    addAchievement({
+      name: 'Contribution Plan Started',
+      project_id: project?.id ?? undefined,
+      description: cursorPrompt,
+      url: magicUrl || undefined,
+    }).catch(() => {})
   }
 
-  const canNext =
-    step === 0 ? selected.length > 0 :
-    step === 1 ? (mode === 'manual' ? !!endTime || !!maxTokens : !!startTime && !!endTime) :
-    true
+  const canNext = step === 0 ? selected.length > 0 : true
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-factory-black/40 backdrop-blur-sm p-4">
@@ -105,7 +124,7 @@ export default function ContributionFlow({ projects, onClose }) {
           <div>
             <h2 className="text-body text-factory-black">New Contribution Plan</h2>
             <div className="flex items-center gap-2 mt-1.5">
-              {STEPS.map((label, i) => (
+              {(preselect ? STEPS_PRESELECT : STEPS_DEFAULT).map((label, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <div className={`flex items-center gap-1.5`}>
                     <span className={`w-5 h-5 rounded-full flex items-center justify-center text-caption font-mono
@@ -116,7 +135,7 @@ export default function ContributionFlow({ projects, onClose }) {
                     </span>
                     <span className={`text-caption ${i === step ? 'text-factory-black' : 'text-ash-gray'}`}>{label}</span>
                   </div>
-                  {i < STEPS.length - 1 && <span className="text-ash-gray text-caption">›</span>}
+                  {i < (preselect ? STEPS_PRESELECT : STEPS_DEFAULT).length - 1 && <span className="text-ash-gray text-caption">›</span>}
                 </div>
               ))}
             </div>
@@ -127,17 +146,56 @@ export default function ContributionFlow({ projects, onClose }) {
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
 
-          {/* Step 0: Select Projects */}
-          {step === 0 && (
+          {/* Step 0: Project info (preselect) or Select Projects */}
+          {step === 0 && preselect && (() => {
+            const p = projects.find((p) => p.id === preselect)
+            if (!p) return null
+            return (
+              <div className="flex flex-col gap-4">
+                <p className="text-body-sm text-graphite">You're contributing to this project.</p>
+                <div className="border border-cool-gray/40 rounded p-5 bg-factory-light-gray">
+                  <p className="text-body font-mono text-factory-black mb-1">{extractRepo(p.url)}</p>
+                  <a href={p.url} target="_blank" rel="noreferrer"
+                    className="text-caption text-ash-gray hover:text-factory-black transition-colors font-mono mb-3 block">
+                    {p.url}
+                  </a>
+                  <p className="text-body-sm text-graphite leading-relaxed">{p.description}</p>
+                </div>
+              </div>
+            )
+          })()}
+
+          {step === 0 && !preselect && (
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-body-sm text-graphite">Choose one or more projects to contribute to.</p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-body-sm text-graphite">Choose a project to contribute to.</p>
                 <button onClick={pickRandom} className="text-caption text-ash-gray hover:text-factory-black transition-colors border border-cool-gray/40 rounded px-3 py-1">
                   Random
                 </button>
               </div>
+
+              {/* Category tabs */}
+              <div className="flex gap-1.5 flex-wrap mb-4">
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setCategory(cat)}
+                    className={`rounded px-3 py-1 text-caption border transition-colors ${
+                      category === cat
+                        ? 'bg-factory-black text-faded-silver border-factory-black'
+                        : 'bg-transparent text-graphite border-cool-gray/40 hover:border-graphite'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
               <div className="space-y-2">
-                {projects.map((project) => {
+                {filteredProjects.length === 0 ? (
+                  <p className="text-body-sm text-ash-gray text-center py-8">No projects in this category.</p>
+                ) : null}
+                {filteredProjects.map((project) => {
                   const rec = isRecommended(project)
                   const active = selected.includes(project.id)
                   return (
@@ -163,88 +221,20 @@ export default function ContributionFlow({ projects, onClose }) {
                             {project.description}
                           </p>
                         </div>
-                        <span className={`shrink-0 w-4 h-4 rounded border flex items-center justify-center text-caption
-                          ${active ? 'bg-faded-silver border-faded-silver text-factory-black' : 'border-cool-gray/60'}`}>
-                          {active && '✓'}
+                        <span className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center
+                          ${active ? 'border-faded-silver' : 'border-cool-gray/60'}`}>
+                          {active && <span className="w-2 h-2 rounded-full bg-faded-silver" />}
                         </span>
                       </div>
                     </button>
                   )
                 })}
               </div>
-              {selected.length > 0 && (
-                <p className="text-caption text-ash-gray mt-3 font-mono">{selected.length} project{selected.length > 1 ? 's' : ''} selected</p>
-              )}
             </div>
           )}
 
-          {/* Step 1: Set Rules */}
+          {/* Step 1: Copy Prompt */}
           {step === 1 && (
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <p className="text-body-sm text-factory-black">{mode === 'manual' ? 'Manual' : 'Automatic'}</p>
-                  <p className="text-caption text-ash-gray mt-0.5">
-                    {mode === 'manual'
-                      ? 'Contribution starts when you click Contribute Now.'
-                      : 'Contribution runs on the schedule you define.'}
-                  </p>
-                </div>
-                {/* Toggle */}
-                <button
-                  onClick={() => setMode((m) => m === 'manual' ? 'auto' : 'manual')}
-                  className={`relative w-12 h-6 rounded-full transition-colors shrink-0
-                    ${mode === 'auto' ? 'bg-factory-black' : 'bg-cool-gray'}`}
-                >
-                  <span className={`absolute top-1 w-4 h-4 rounded-full bg-faded-silver shadow transition-all
-                    ${mode === 'auto' ? 'left-7' : 'left-1'}`} />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                {mode === 'auto' && (
-                  <div>
-                    <label className="block text-caption text-graphite mb-1.5">Start time</label>
-                    <input
-                      type="datetime-local"
-                      className="input w-full"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                    />
-                  </div>
-                )}
-                <div>
-                  <label className="block text-caption text-graphite mb-1.5">End time</label>
-                  <input
-                    type="datetime-local"
-                    className="input w-full"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-caption text-graphite mb-1.5">Max tokens</label>
-                  <input
-                    type="number"
-                    className="input w-full"
-                    placeholder="e.g. 10000"
-                    value={maxTokens}
-                    onChange={(e) => setMaxTokens(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-5 p-3 border border-cool-gray/40 rounded bg-factory-light-gray">
-                <p className="text-caption text-graphite">
-                  <span className="font-mono text-factory-black">{selectedProjects.length}</span> project{selectedProjects.length > 1 ? 's' : ''} selected:{' '}
-                  {selectedProjects.map((p) => extractRepo(p.url)).join(', ')}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Copy Prompt */}
-          {step === 2 && (
             <div>
               <p className="text-body-sm text-graphite mb-4">
                 Copy this prompt and paste it into your AI agent to start volunteering work.
@@ -311,17 +301,19 @@ export default function ContributionFlow({ projects, onClose }) {
           >
             {step === 0 ? 'Cancel' : 'Back'}
           </button>
-          {step < 2 ? (
-            <button
-              onClick={() => setStep((s) => s + 1)}
-              disabled={!canNext}
-              className={`px-4 py-2 text-body-sm rounded transition-colors
-                ${canNext
-                  ? 'bg-factory-black text-faded-silver hover:bg-factory-black/80'
-                  : 'bg-cool-gray text-ash-gray cursor-not-allowed'}`}
-            >
-              Next
-            </button>
+          {step < 1 ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setStep((s) => s + 1)}
+                disabled={!canNext}
+                className={`px-4 py-2 text-body-sm rounded transition-colors
+                  ${canNext
+                    ? 'bg-factory-black text-faded-silver hover:bg-factory-black/80'
+                    : 'bg-cool-gray text-ash-gray cursor-not-allowed'}`}
+              >
+                Next
+              </button>
+            </div>
           ) : (
             <div className="flex items-center gap-2">
               <button

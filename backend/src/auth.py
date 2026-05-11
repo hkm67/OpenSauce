@@ -10,7 +10,7 @@ from .db import get_connection, row_to_dict
 
 
 def hash_password(password):
-    return generate_password_hash(password)
+    return generate_password_hash(password, method='pbkdf2:sha256')
 
 
 def verify_password(password_hash, password):

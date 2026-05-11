@@ -13,7 +13,6 @@ import Agents from './pages/dashboard/Agents'
 import Contributions from './pages/dashboard/Contributions'
 import Marketplace from './pages/dashboard/Marketplace'
 import Projects from './pages/projects/Projects'
-import ProjectDetail from './pages/projects/ProjectDetail'
 import Settings from './pages/Settings'
 import Notifications from './pages/Notifications'
 import Docs from './pages/Docs'
@@ -40,7 +39,6 @@ export default function App() {
           <Route path="/oauth/callback" element={<OAuthCallback />} />
           <Route path="/signup" element={<SignUp />} />
           <Route path="/projects" element={<Projects />} />
-          <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/terms" element={<PlaceholderPage title="Terms of Service" />} />
           <Route path="/privacy" element={<PlaceholderPage title="Privacy Policy" />} />
