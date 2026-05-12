@@ -4,7 +4,7 @@ import { apiUrl } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Login() {
-  const [form, setForm] = useState({ username: '', password: '' })
+  const [form, setForm] = useState({ email: '', password: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
@@ -21,10 +21,10 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      await login(form.username, form.password)
+      await login(form.email, form.password)
       navigate(from, { replace: true })
     } catch (err) {
-      setError(err.response?.data?.error || 'Invalid username or password')
+      setError(err.message || err.response?.data?.error || 'Invalid email or password')
     } finally {
       setLoading(false)
     }
@@ -51,9 +51,9 @@ export default function Login() {
               <p className="text-body-sm text-red-600 border border-red-200 bg-red-50 rounded px-3 py-2">{error}</p>
             )}
             <div>
-              <label className="label">Username</label>
-              <input type="text" autoComplete="username" className="input" placeholder="your-username"
-                value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required />
+              <label className="label">Email</label>
+              <input type="email" autoComplete="email" className="input" placeholder="you@example.com"
+                value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
             </div>
             <div>
               <label className="label">Password</label>

@@ -18,8 +18,17 @@ export function AuthProvider({ children }) {
     }
   })
 
-  const login = useCallback(async (username, password) => {
-    const res = await apiLogin({ username, password })
+  const login = useCallback(async (email, password) => {
+    const res = await apiLogin({ email, password })
+    const { oauth_token, user } = res.data
+    localStorage.setItem('token', oauth_token)
+    localStorage.setItem('user', JSON.stringify(user))
+    setUser(user)
+    return user
+  }, [])
+
+  const signup = useCallback(async (name, username, email, password) => {
+    const res = await apiSignup({ name, username, email, password })
     const { oauth_token, user } = res.data
     localStorage.setItem('token', oauth_token)
     localStorage.setItem('user', JSON.stringify(user))
@@ -36,11 +45,6 @@ export function AuthProvider({ children }) {
     return user
   }, [])
 
-  const signup = useCallback(async (name, username, password) => {
-    await apiSignup({ name, username, password })
-    return login(username, password)
-  }, [login])
-
   const logout = useCallback(() => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
@@ -49,7 +53,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, completeOAuthLogin, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, loading: false, login, signup, logout, completeOAuthLogin, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   )

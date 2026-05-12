@@ -1,5 +1,8 @@
 {
-  "buildCommand": "cd frontend && npm install && npm run build",
+  "git": {
+    "deploymentEnabled": false
+  },
+  "buildCommand": "cd frontend && npm ci && npm run build",
   "outputDirectory": "frontend/dist",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

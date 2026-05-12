@@ -4,7 +4,7 @@ import { apiUrl } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function SignUp() {
-  const [form, setForm] = useState({ name: '', username: '', password: '', confirm: '' })
+  const [form, setForm] = useState({ name: '', username: '', email: '', password: '', confirm: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { signup } = useAuth()
@@ -21,10 +21,10 @@ export default function SignUp() {
     if (form.password.length < 6) { setError('Password must be at least 6 characters'); return }
     setLoading(true)
     try {
-      await signup(form.name, form.username, form.password)
+      await signup(form.name, form.username, form.email, form.password)
       navigate('/onboarding/agent-setup')
     } catch (err) {
-      const msg = err.response?.data?.error || 'Could not create account'
+      const msg = err.message || err.response?.data?.error || 'Could not create account'
       setError(msg.includes('UNIQUE') ? 'Username already taken' : msg)
     } finally {
       setLoading(false)
@@ -54,6 +54,7 @@ export default function SignUp() {
             {[
               { id: 'name',     label: 'Full name',       type: 'text',     ph: 'Jane Smith',  ac: 'name'         },
               { id: 'username', label: 'Username',         type: 'text',     ph: 'jane-smith',  ac: 'username'     },
+              { id: 'email',    label: 'Email',            type: 'email',    ph: 'jane@example.com', ac: 'email'   },
               { id: 'password', label: 'Password',         type: 'password', ph: '••••••••',    ac: 'new-password' },
               { id: 'confirm',  label: 'Confirm password', type: 'password', ph: '••••••••',    ac: 'new-password' },
             ].map(({ id, label, type, ph, ac }) => (

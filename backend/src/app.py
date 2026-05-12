@@ -1,3 +1,4 @@
+import os
 from urllib.parse import urlparse, urlunparse
 
 from flask import Flask, jsonify, redirect, request
@@ -14,7 +15,8 @@ from .routes.users import users_bp
 def create_app():
     app = Flask(__name__)
     app.secret_key = SECRET_KEY
-    init_db()
+    if os.getenv("OPENSAUCE_SKIP_DB_INIT", "").lower() not in ("1", "true", "yes"):
+        init_db()
 
     app.register_blueprint(oauth_bp)
     app.register_blueprint(users_bp)
@@ -29,7 +31,7 @@ def create_app():
             response.headers["Access-Control-Allow-Credentials"] = "true"
             response.headers["Vary"] = "Origin"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
         return response
 
     @app.before_request

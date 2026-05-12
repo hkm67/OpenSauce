@@ -33,9 +33,9 @@ def add_activity():
         )
         activity = connection.execute(
             """
-            SELECT rowid AS id, user_id, opensource_id, timestamp, url
+            SELECT id, user_id, opensource_id, timestamp, url
             FROM activities
-            WHERE rowid = ?
+            WHERE id = ?
             """,
             (cursor.lastrowid,),
         ).fetchone()

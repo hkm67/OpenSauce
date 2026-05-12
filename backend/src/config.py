@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from urllib.parse import quote
 
 try:
     from dotenv import load_dotenv
@@ -10,31 +11,45 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if load_dotenv:
     load_dotenv(BASE_DIR / ".env")
 
-DATABASE_PATH = os.getenv("DATABASE_PATH", str(BASE_DIR / "opensauce.db"))
+
+LEGACY_ENV_VARS = ("DATABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_JWT_SECRET")
+_present_legacy_env = [name for name in LEGACY_ENV_VARS if os.getenv(name)]
+if _present_legacy_env:
+    raise RuntimeError(
+        "Remove unsupported legacy environment variable(s): "
+        + ", ".join(_present_legacy_env)
+        + ". Use DB_URL_TEMPLATE, DB_PASSWORD, and SUPABASE_PUBLISHABLE_KEY instead."
+    )
+
+
+def _build_database_url():
+    template = os.getenv("DB_URL_TEMPLATE", "").strip()
+    password = os.getenv("DB_PASSWORD", "")
+
+    if not template or not password:
+        return ""
+    if "[YOUR-PASSWORD]" not in template:
+        raise RuntimeError("DB_URL_TEMPLATE must include the literal [YOUR-PASSWORD] placeholder.")
+
+    return template.replace("[YOUR-PASSWORD]", quote(password, safe=""))
+
+
+DB_DSN = _build_database_url()
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 TOKEN_EXPIRES_SECONDS = int(os.getenv("TOKEN_EXPIRES_SECONDS", "86400"))
-
-GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
-GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
 GITHUB_REDIRECT_URI = os.getenv(
     "GITHUB_REDIRECT_URI",
     "http://localhost:8000/oauth/github/callback",
 )
-# After GitHub login: 302 here (no JWT in query string). Set in production to your real app.
-OAUTH_SUCCESS_REDIRECT = os.getenv("OAUTH_SUCCESS_REDIRECT", "")
-# If 1, append #access_token=...&token_type=Bearer for SPAs on another origin (localhost:3000 vs :8000).
-OAUTH_TOKEN_IN_FRAGMENT = os.getenv("OAUTH_TOKEN_IN_FRAGMENT", "").lower() in (
-    "1",
-    "true",
-    "yes",
+OAUTH_SUCCESS_REDIRECT = os.getenv(
+    "OAUTH_SUCCESS_REDIRECT",
+    "http://localhost:3000/oauth/callback",
 )
-# HttpOnly cookie on the API host so same-origin browser requests stay authenticated without Bearer header.
+
 AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "opensauce_token")
-# Set to 1 in production behind HTTPS (Secure cookies).
-AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "").lower() in ("1", "true", "yes")
-# Dev-only: return JSON from the callback instead of redirecting (local API testing).
-OAUTH_JSON_RESPONSE = os.getenv("OAUTH_JSON_RESPONSE", "").lower() in ("1", "true", "yes")
-# Local frontend origin allowed to call the API with the HttpOnly auth cookie.
+# Frontend origin allowed to call the API with browser credentials.
 CORS_ALLOWED_ORIGIN = os.getenv("CORS_ALLOWED_ORIGIN", "http://localhost:3000")
 # Public-facing base URL of this API (no trailing slash).
 # Set to the deployed domain so generated URLs (magic_url, /achieve in SKILL.md)
