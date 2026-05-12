@@ -78,7 +78,7 @@ jobs:
       name: ${{ github.ref == 'refs/heads/main' && 'production' || 'production-manual' }}
       url: https://opensauce.itdogtics.com
     if: |
-      github.event_name == 'pull_request' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && inputs.deploy_frontend == 'true')
     needs: [backend-unit-tests, frontend-build, backend-build]
@@ -123,7 +123,7 @@ jobs:
       name: ${{ github.ref == 'refs/heads/main' && 'production' || 'production-manual' }}
       url: https://api.opensauce.itdogtics.com/health
     if: |
-      github.event_name == 'pull_request' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && inputs.deploy_backend == 'true')
     needs: [backend-unit-tests, frontend-build, backend-build]
