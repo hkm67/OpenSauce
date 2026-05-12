@@ -71,6 +71,8 @@ For production, set `GITHUB_REDIRECT_URI` to the deployed backend callback and `
 
 Render Free Web Service:
 
+- Production URL: `https://api.opensauce.itdogtics.com`
+- Render fallback URL: `https://opensauce-api.onrender.com`
 - Root directory: `backend`
 - Build command: `pip install -r requirements.txt`
 - Start command: `gunicorn -c gunicorn.conf.py wsgi:app`
@@ -78,13 +80,32 @@ Render Free Web Service:
 
 Required Render env vars: `DB_URL_TEMPLATE`, `DB_PASSWORD`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SECRET_KEY`, `PUBLIC_BASE_URL`, and `CORS_ALLOWED_ORIGIN`.
 
+Production URL env vars:
+
+```env
+PUBLIC_BASE_URL=https://api.opensauce.itdogtics.com
+GITHUB_REDIRECT_URI=https://api.opensauce.itdogtics.com/oauth/github/callback
+OAUTH_SUCCESS_REDIRECT=https://opensauce.itdogtics.com/oauth/callback
+CORS_ALLOWED_ORIGIN=https://opensauce.itdogtics.com
+```
+
 Optional backend tuning env vars: `GUNICORN_WORKERS`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`, `GUNICORN_GRACEFUL_TIMEOUT`, `GUNICORN_KEEPALIVE`, and `GUNICORN_LOG_LEVEL`. The defaults use threaded workers so local OAuth/Supabase waits and dropped browser sockets do not monopolize the only request worker.
 
 ## GitHub CI
 
-The `Build Test Deploy` workflow runs backend unit tests, frontend build, and backend Docker build on every branch push and pull request. Pushes to `main` deploy automatically.
+The `Build Test Deploy` workflow runs backend unit tests, frontend build, and backend Docker build on every branch push and pull request. Pushes to `main` deploy production automatically.
 
-For branch testing, open **Actions > Build Test Deploy > Run workflow** and choose whether to deploy the frontend preview and/or trigger the backend deploy hook after checks pass. Use this for explicit branch deploy loops while keeping `main` as the automatic production path.
+For branch production verification, open **Actions > Build Test Deploy > Run workflow**, choose the branch, and set `deploy_frontend` and/or `deploy_backend` to `true`. Backend deployment uses Render's API with `commitId: $GITHUB_SHA`, so a manual branch run deploys the exact branch commit that passed CI. Keep `main` as the known-working rollback path.
+
+Required GitHub Actions secrets for deployment:
+
+```text
+VERCEL_TOKEN
+VERCEL_ORG_ID
+VERCEL_PROJECT_ID
+RENDER_API_KEY
+RENDER_SERVICE_ID
+```
 
 ## Tests
 
@@ -92,4 +113,24 @@ For branch testing, open **Actions > Build Test Deploy > Run workflow** and choo
 cd backend
 pip install -r requirements.txt
 python -m pytest
+```
+
+Production smoke test both the Render hostname and custom API hostname:
+
+```bash
+cd backend
+OPENSAUCE_EMAIL=smoke@example.com OPENSAUCE_PASSWORD='...' ./scripts/smoke-production.sh
+```
+
+By default it checks:
+
+```text
+https://opensauce-api.onrender.com
+https://api.opensauce.itdogtics.com
+```
+
+Override targets with:
+
+```bash
+TARGETS="https://opensauce-api.onrender.com" OPENSAUCE_EMAIL=... OPENSAUCE_PASSWORD=... ./scripts/smoke-production.sh
 ```

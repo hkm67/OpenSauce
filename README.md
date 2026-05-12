@@ -6,8 +6,28 @@ OpenSauce is organized as a monorepo with a Flask backend and Vite/React fronten
 
 - Database and user management: Supabase Postgres + Supabase Auth, proxied through the backend.
 - Backend deployment target: Render Free Web Service from `backend/`.
-- Frontend deployment target: Vercel from `frontend/`.
-- CI/CD: `.github/workflows/deploy.yml` runs backend unit tests, frontend build, and backend Docker build on every branch push and pull request. Pushes to `main` deploy automatically. Branches can also be deployed manually with the workflow's `workflow_dispatch` inputs after checks pass.
+- Frontend deployment target: Vercel with project root `frontend/`.
+- CI/CD: `.github/workflows/deploy.yml` runs backend unit tests, frontend build, and backend Docker build on every branch push and pull request. Pushes to `main` deploy production automatically. Branches can also be manually promoted to production with the workflow's `workflow_dispatch` inputs after checks pass.
+
+## Production Deployment Map
+
+- Frontend production URL: `https://opensauce.itdogtics.com`
+- Frontend Vercel fallback URL: `https://open-sauce-theta.vercel.app`
+- Vercel project: `open-sauce`
+- Backend production URL: `https://api.opensauce.itdogtics.com`
+- Backend Render fallback URL: `https://opensauce-api.onrender.com`
+- Render service: `opensauce-api`
+- Supabase project URL: `https://wyshohsvlmzqhtxxkcre.supabase.co`
+
+Production runtime values:
+
+```env
+VITE_API_BASE_URL=https://api.opensauce.itdogtics.com
+PUBLIC_BASE_URL=https://api.opensauce.itdogtics.com
+GITHUB_REDIRECT_URI=https://api.opensauce.itdogtics.com/oauth/github/callback
+OAUTH_SUCCESS_REDIRECT=https://opensauce.itdogtics.com/oauth/callback
+CORS_ALLOWED_ORIGIN=https://opensauce.itdogtics.com
+```
 
 ## Setup Order
 
@@ -15,7 +35,7 @@ OpenSauce is organized as a monorepo with a Flask backend and Vite/React fronten
 2. Enable Supabase Email/Password Auth. For GitHub login, enable the GitHub provider in Supabase Auth, add `http://localhost:8000/oauth/github/callback` to allowed redirect URLs for local Docker, and use Supabase's GitHub provider callback URL in the GitHub OAuth App. In Supabase's GitHub provider settings, paste the real GitHub OAuth App Client ID and Client Secret; the Client ID is not the app name.
 3. Configure Render with backend env vars from `backend/.env.example`.
 4. Configure Vercel with `VITE_API_BASE_URL`; the browser does not need Supabase credentials.
-5. Add GitHub repository secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, and `RENDER_DEPLOY_HOOK_URL`.
+5. Add GitHub repository secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `RENDER_API_KEY`, and `RENDER_SERVICE_ID`.
 
 ## Run Locally With Docker
 

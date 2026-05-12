@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: opensauce-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    healthCheckPath: /health
+    autoDeployTrigger: off
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: TOKEN_EXPIRES_SECONDS
+        value: "86400"
+      - key: DB_URL_TEMPLATE
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: GITHUB_REDIRECT_URI
+        value: https://api.opensauce.itdogtics.com/oauth/github/callback
+      - key: OAUTH_SUCCESS_REDIRECT
+        value: https://opensauce.itdogtics.com/oauth/callback
+      - key: PUBLIC_BASE_URL
+        value: https://api.opensauce.itdogtics.com
+      - key: CORS_ALLOWED_ORIGIN
+        value: https://opensauce.itdogtics.com
+      - key: GUNICORN_LOG_LEVEL
+        value: info
