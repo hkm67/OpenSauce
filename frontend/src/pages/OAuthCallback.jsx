@@ -16,7 +16,7 @@ export default function OAuthCallback() {
     const token = params.get('access_token')
 
     if (!token) {
-      setError('GitHub did not return an access token.')
+      setError('OAuth did not return an access token.')
       return
     }
 
@@ -25,7 +25,7 @@ export default function OAuthCallback() {
       .catch((err) => {
         localStorage.removeItem('token')
         localStorage.removeItem('user')
-        setError(err.response?.data?.error || 'Could not finish GitHub sign in.')
+        setError(err.message || err.response?.data?.error || 'Could not finish GitHub sign in.')
       })
   }, [completeOAuthLogin, navigate])
 

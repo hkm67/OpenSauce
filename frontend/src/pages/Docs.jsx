@@ -52,17 +52,18 @@ client.report_usage(
 **Base URL:** http://localhost:8000 (local dev)
 
 All authenticated endpoints require:
-Authorization: Bearer token
+Authorization: Bearer <opensauce-api-token>
 
 ---
 
-**POST /user** — Create account
-**POST /login** — Authenticate
+**POST /user** — Create account through backend-managed Supabase Auth
+**POST /login** — Authenticate through backend-managed Supabase Auth
+**GET /user** — Current authenticated profile
 **GET /projects** — List all projects (public)
 **POST /project** — Add a project (auth required)
 **POST /activity** — Record a contribution (auth required)
-**GET /skill** — Get your skills (auth required)
-**POST /achieve** — Add a skill (auth required)
+**GET /skill** — Generate SKILL.md and a temporary achievement token
+**POST /achieve** — Add a contribution with either a Supabase token or temporary achievement token
     `,
   },
   {

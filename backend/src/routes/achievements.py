@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 from flask import Blueprint, Response, g, jsonify, request
 
 from ..auth import create_temporary_achievement_token, require_auth, require_achievement_auth
+from ..config import PUBLIC_BASE_URL
 from ..db import get_connection, row_to_dict, transaction
 from ..github import fetch_random_open_issue
 from ..responses import error, require_fields
@@ -14,15 +15,15 @@ achievements_bp = Blueprint("achievements", __name__)
 
 
 WINDOWS = {
-    "daily": "-1 day",
-    "weekly": "-7 days",
-    "monthly": "-30 days",
+    "daily": "1 day",
+    "weekly": "7 days",
+    "monthly": "30 days",
 }
 
 ACHIEVEMENT_SORTS = {
     "recent": "a.created_at DESC, a.id DESC",
     "oldest": "a.created_at ASC, a.id ASC",
-    "name": "a.name COLLATE NOCASE ASC, a.id DESC",
+    "name": "lower(a.name) ASC, a.id DESC",
 }
 
 
@@ -82,12 +83,12 @@ def list_achievements():
         filters.append(
             """
             (
-                a.name LIKE ?
-                OR a.description LIKE ?
-                OR a.url LIKE ?
-                OR a.issue_title LIKE ?
-                OR a.issue_url LIKE ?
-                OR p.url LIKE ?
+                a.name ILIKE ?
+                OR a.description ILIKE ?
+                OR a.url ILIKE ?
+                OR a.issue_title ILIKE ?
+                OR a.issue_url ILIKE ?
+                OR p.url ILIKE ?
             )
             """
         )
@@ -176,7 +177,7 @@ def _parse_project_ids(data):
         return None
 
 
-def _build_skill_prompt(projects, achievement_token):
+def _build_skill_prompt(projects, achievement_token, api_base_url):
     project_list = "\n".join(
         f"- Project {project['id']}: {project['url']} - {project['description']}"
         for project in projects
@@ -223,7 +224,7 @@ Complete one useful contribution for the assigned issue.
 11. Report the completed work back to OpenSauce by calling:
 
 ```http
-POST http://localhost:8000/achieve
+POST {api_base_url}/achieve
 Authorization: Bearer {achievement_token}
 Content-Type: application/json
 
@@ -270,7 +271,7 @@ def _top_repositories(connection, since_modifier, top_n):
             COUNT(a.id) AS contributions
         FROM achievements a
         JOIN projects p ON p.id = a.project_id
-        WHERE a.created_at >= datetime('now', ?)
+        WHERE a.created_at >= now() - (?::interval)
         GROUP BY p.id, p.url, p.description
         ORDER BY contributions DESC, p.id ASC
         LIMIT ?
@@ -289,8 +290,8 @@ def _top_users(connection, since_modifier, top_n):
             u.username,
             COUNT(a.id) AS contributions
         FROM achievements a
-        JOIN users u ON u.id = a.user_id
-        WHERE a.created_at >= datetime('now', ?)
+        JOIN profiles u ON u.id = a.user_id
+        WHERE a.created_at >= now() - (?::interval)
         GROUP BY u.id, u.name, u.username
         ORDER BY contributions DESC, u.id ASC
         LIMIT ?
@@ -420,7 +421,7 @@ def _build_skill_response_payload(data):
 
     with get_connection() as connection:
         user = connection.execute(
-            "SELECT id, name, username FROM users WHERE id = ?",
+            "SELECT id, name, username FROM profiles WHERE id = ?",
             (data["user_id"],),
         ).fetchone()
         if user is None:
@@ -442,7 +443,7 @@ def _build_skill_response_payload(data):
                 """
                 SELECT id, url, description
                 FROM projects
-                ORDER BY RANDOM()
+                ORDER BY random()
                 LIMIT 3
                 """
             ).fetchall()
@@ -471,9 +472,10 @@ def _build_skill_response_payload(data):
     token = create_temporary_achievement_token(
         data["user_id"], project_data, assigned_issue=assigned_issue
     )
-    prompt = _build_skill_prompt(project_data, token)
+    base_url = PUBLIC_BASE_URL or request.url_root.rstrip("/")
+    prompt = _build_skill_prompt(project_data, token, base_url)
     magic_token = _build_magic_token(data["user_id"], project_ids)
-    magic_url = f"{request.url_root.rstrip('/')}/skill.md?t={magic_token}"
+    magic_url = f"{base_url}/skill.md?t={magic_token}"
 
     return {
         "prompt_filename": "SKILL.md",

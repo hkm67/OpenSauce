@@ -1,5 +1,4 @@
-import sqlite3
-
+import psycopg
 from flask import Blueprint, jsonify, request
 
 from ..auth import require_auth
@@ -42,7 +41,7 @@ def create_project():
                 (data["url"], data["description"]),
             )
             project_id = cursor.lastrowid
-    except sqlite3.IntegrityError:
+    except psycopg.errors.UniqueViolation:
         return error("Project URL already exists", 409)
 
     return jsonify(

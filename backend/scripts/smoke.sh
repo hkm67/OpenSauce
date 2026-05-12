@@ -6,7 +6,6 @@ BASE_URL="${BASE_URL:-http://localhost:8000}"
 BASE_URL="$BASE_URL" python3 - <<'PY'
 import json
 import os
-import time
 import urllib.error
 import urllib.request
 
@@ -48,40 +47,8 @@ print("ok /health")
 
 status, projects = request("GET", "/projects")
 assert status == 200 and projects["projects"]
-project_id = projects["projects"][0]["id"]
 print(f"ok /projects ({len(projects['projects'])} project(s))")
 
-username = f"smoke-{int(time.time())}"
-status, user = request(
-    "POST",
-    "/user",
-    {"name": "Smoke User", "username": username, "password": "secret"},
-)
-assert status == 201
-print("ok /user")
-
-status, login = request("POST", "/login", {"username": username, "password": "secret"})
-assert status == 200 and login["oauth_token"]
-print("ok /login")
-
-status, skill = request(
-    "POST",
-    "/skill",
-    {"user_id": user["id"], "project_ids": [project_id]},
-)
-assert status == 200 and skill["assigned_issue"] and skill["temporary_auth"]["oauth_token"]
-print(f"ok /skill assigned issue #{skill['assigned_issue']['number']}")
-
-status, achievement = request(
-    "POST",
-    "/achieve",
-    {
-        "name": "Smoke contribution",
-        "url": "https://github.com/example/project/pull/1",
-        "description": "Smoke test achievement",
-    },
-    token=skill["temporary_auth"]["oauth_token"],
-)
-assert status == 201 and achievement["achievement"]["issue_url"]
-print("ok /achieve")
+print("Authenticated smoke checks require an OpenSauce API token:")
+print("  OPENSAUCE_API_TOKEN=... BASE_URL=... ./scripts/smoke-auth.sh")
 PY
