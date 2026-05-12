@@ -74,10 +74,11 @@ jobs:
 
   deploy-frontend:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'production-manual' }}
+      url: https://opensauce.itdogtics.com
     if: |
+      github.event_name == 'pull_request' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && inputs.deploy_frontend == 'true')
     needs: [backend-unit-tests, frontend-build, backend-build]
@@ -118,7 +119,11 @@ jobs:
 
   deploy-backend:
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'production-manual' }}
+      url: https://api.opensauce.itdogtics.com/health
     if: |
+      github.event_name == 'pull_request' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && inputs.deploy_backend == 'true')
     needs: [backend-unit-tests, frontend-build, backend-build]
