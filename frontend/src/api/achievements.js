@@ -1,7 +1,5 @@
 import client from './client'
 
-export const getSkills = () => client.get('/skills')
-
 export const addAchievement = (data) => client.post('/achieve', data)
 
 export const fetchSkillPrompt = (userId, githubRepos) => {

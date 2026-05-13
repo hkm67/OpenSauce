@@ -300,6 +300,7 @@ def client(monkeypatch, fake_db):
     app_module = importlib.import_module("src.app")
     importlib.import_module("src.cache").cache_clear()
     importlib.import_module("src.github").clear_github_cache()
+    importlib.import_module("src.rate_limit").clear_rate_limits()
 
     @contextmanager
     def fake_transaction():
@@ -368,6 +369,30 @@ def test_health_endpoint(client):
 
     assert response.status_code == 200
     assert response.get_json() == {"status": "ok"}
+
+
+def test_cors_allows_localhost_and_loopback_frontend_origins(client):
+    localhost = client.options(
+        "/github/search",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "Authorization",
+        },
+    )
+    loopback = client.options(
+        "/github/search",
+        headers={
+            "Origin": "http://127.0.0.1:3000",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "Authorization",
+        },
+    )
+
+    assert localhost.status_code == 204
+    assert localhost.headers["Access-Control-Allow-Origin"] == "http://localhost:3000"
+    assert loopback.status_code == 204
+    assert loopback.headers["Access-Control-Allow-Origin"] == "http://127.0.0.1:3000"
 
 
 def test_database_url_can_be_built_from_template_and_password(monkeypatch):
@@ -539,6 +564,17 @@ def test_local_auth_signup_and_login(client, monkeypatch):
     assert bad_login.status_code == 401
 
 
+def test_auth_endpoints_are_rate_limited(client):
+    responses = [
+        client.post("/login", json={"email": "ada@example.com", "password": "secret"})
+        for _ in range(11)
+    ]
+
+    assert all(response.status_code == 200 for response in responses[:10])
+    assert responses[10].status_code == 429
+    assert responses[10].get_json()["error"] == "Rate limit exceeded"
+
+
 def test_user_signup_and_login_validate_errors(client, monkeypatch):
     missing = client.post("/user", json={"username": "ada", "email": "ada@example.com", "password": "secret"})
     duplicate = client.post(
@@ -610,6 +646,7 @@ def test_github_oauth_callback_requires_pkce_verifier(client):
 
 
 def test_github_search_supports_pagination(client, monkeypatch):
+    headers = auth_headers(make_user_token())
     calls = []
 
     def fake_search(query, limit, page):
@@ -628,14 +665,16 @@ def test_github_search_supports_pagination(client, monkeypatch):
 
     monkeypatch.setattr("src.routes.achievements.search_github_repositories", fake_search)
 
-    response = client.get("/github/search?q=react&limit=15&page=2")
-    invalid_page = client.get("/github/search?q=react&page=0")
+    response = client.get("/github/search?q=react&limit=15&page=2", headers=headers)
+    invalid_page = client.get("/github/search?q=react&page=0", headers=headers)
+    missing_auth = client.get("/github/search?q=react")
 
     assert response.status_code == 200
     assert calls == [("react", 15, 2)]
     assert response.get_json()["pagination"]["page"] == 2
     assert response.get_json()["repositories"][0]["github_repo"] == "example/project"
     assert invalid_page.status_code == 400
+    assert missing_auth.status_code == 401
 
 
 def test_github_search_uses_application_cache(monkeypatch):
@@ -780,7 +819,7 @@ def test_achieve_accepts_normal_backend_user_token(client):
     assert response.get_json()["achievement"]["name"] == "User contribution"
 
 
-def test_achievements_and_skills_list_with_filters_sorting_and_validation(client):
+def test_achievements_list_with_filters_sorting_and_validation(client):
     token = make_user_token()
     headers = auth_headers(token)
     client.post(
@@ -814,7 +853,6 @@ def test_achievements_and_skills_list_with_filters_sorting_and_validation(client
     by_search = client.get("/achievements?q=Second", headers=headers)
     oldest = client.get("/achievements?sort=oldest", headers=headers)
     by_name = client.get("/achievements?sort=name", headers=headers)
-    skills = client.get("/skills", headers=headers)
 
     invalid_limit = client.get("/achievements?limit=0", headers=headers)
     invalid_offset = client.get("/achievements?offset=-1", headers=headers)
@@ -828,8 +866,6 @@ def test_achievements_and_skills_list_with_filters_sorting_and_validation(client
     assert by_search.get_json()["achievements"][0]["name"] == "Second contribution"
     assert oldest.get_json()["achievements"][0]["name"] == "Second contribution"
     assert by_name.get_json()["achievements"][0]["name"] == "First contribution"
-    assert skills.status_code == 200
-    assert len(skills.get_json()["skills"]) == 2
     assert invalid_limit.status_code == 400
     assert invalid_offset.status_code == 400
     assert invalid_status.status_code == 400
@@ -842,9 +878,10 @@ def test_achievement_dashboard_and_validation(client):
     client.post("/achieve", json={"name": "One", "github_repo": "example/project"}, headers=headers)
     client.post("/achieve", json={"name": "Two", "github_repo": "example/project"}, headers=headers)
 
-    response = client.get("/achievements/dashboard?top_n=1")
-    invalid_low = client.get("/achievement/dashboard?top_n=0")
-    invalid_text = client.get("/achievement/dashboard?top_n=abc")
+    response = client.get("/achievements/dashboard?top_n=1", headers=headers)
+    invalid_low = client.get("/achievement/dashboard?top_n=0", headers=headers)
+    invalid_text = client.get("/achievement/dashboard?top_n=abc", headers=headers)
+    missing_auth = client.get("/achievement/dashboard")
 
     assert response.status_code == 200
     monthly = response.get_json()["windows"]["monthly"]
@@ -852,6 +889,7 @@ def test_achievement_dashboard_and_validation(client):
     assert monthly["top_users"][0]["user_id"] == USER_ID
     assert invalid_low.status_code == 400
     assert invalid_text.status_code == 400
+    assert missing_auth.status_code == 401
 
 
 def test_achieve_validates_inputs_and_project_scope(client):

@@ -2,6 +2,8 @@
 
 Flask API for users, GitHub-referenced activities, skill prompts, and achievements. The browser only talks to this API. Production uses Supabase Auth and Supabase Postgres; Docker/local can use local Postgres plus local auth.
 
+For endpoint details, request/response examples, and AI-agent-oriented workflows, see [`API.md`](API.md).
+
 ## Local Setup
 
 1. Start a local Postgres instance or create a Supabase project.
@@ -39,11 +41,15 @@ The frontend runs at `http://localhost:3000` and proxies `/api/*` to the backend
 - `SUPABASE_PUBLISHABLE_KEY`: Supabase publishable key, required when `LOCAL_AUTH_ENABLED=false`.
 - `SECRET_KEY`: Backend signing key for normal OpenSauce API tokens and temporary `/achieve` tokens.
 - `PUBLIC_BASE_URL`: Public API URL used in generated `SKILL.md` links.
-- `CORS_ALLOWED_ORIGIN`: Frontend origin allowed to call the API.
+- `CORS_ALLOWED_ORIGINS`: Comma-separated frontend origins allowed to call the API. Defaults locally to `http://localhost:3000,http://127.0.0.1:3000`. `CORS_ALLOWED_ORIGIN` is still accepted for a single-origin deployment.
 - `GITHUB_CACHE_TTL_SECONDS`: In-memory TTL for GitHub marketplace/repo/issue fetches. Defaults to `300`; set `0` to disable.
 - `GITHUB_CACHE_MAX_ITEMS`: Maximum cached GitHub response entries per API process. Defaults to `256`.
-- `APP_CACHE_TTL_SECONDS`: In-memory TTL for DB-backed read endpoints such as `/user`, `/preferences`, `/achievements`, `/skills`, and `/achievements/dashboard`. Defaults to `60`; set `0` to disable.
+- `APP_CACHE_TTL_SECONDS`: In-memory TTL for DB-backed read endpoints such as `/user`, `/preferences`, `/achievements`, and `/achievements/dashboard`. Defaults to `60`; set `0` to disable.
 - `APP_CACHE_MAX_ITEMS`: Maximum cached DB response entries per API process. Defaults to `512`.
+- `RATE_LIMIT_ENABLED`: Enables in-process API rate limiting. Defaults to `true`.
+- `RATE_LIMIT_AUTH_REQUESTS` / `RATE_LIMIT_AUTH_WINDOW_SECONDS`: Auth endpoint quota. Defaults to `10` requests per `60` seconds.
+- `RATE_LIMIT_API_REQUESTS` / `RATE_LIMIT_API_WINDOW_SECONDS`: Normal authenticated API quota. Defaults to `120` requests per `60` seconds.
+- `RATE_LIMIT_EXPENSIVE_REQUESTS` / `RATE_LIMIT_EXPENSIVE_WINDOW_SECONDS`: Expensive authenticated API quota for GitHub calls and heavier DB reads. Defaults to `30` requests per `60` seconds.
 
 ## Auth Model
 
@@ -82,7 +88,7 @@ Render Free Web Service:
 - Start command: `gunicorn -c gunicorn.conf.py wsgi:app`
 - Health check path: `/health`
 
-Required Render env vars: `DB_URL_TEMPLATE`, `DB_PASSWORD`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SECRET_KEY`, `PUBLIC_BASE_URL`, `CORS_ALLOWED_ORIGIN`, and `LOCAL_AUTH_ENABLED=false`. Cache env vars are synced by CI with production defaults: `GITHUB_CACHE_TTL_SECONDS=300`, `GITHUB_CACHE_MAX_ITEMS=256`, `APP_CACHE_TTL_SECONDS=60`, and `APP_CACHE_MAX_ITEMS=512`.
+Required Render env vars: `DB_URL_TEMPLATE`, `DB_PASSWORD`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SECRET_KEY`, `PUBLIC_BASE_URL`, `CORS_ALLOWED_ORIGINS`, and `LOCAL_AUTH_ENABLED=false`. Cache and rate-limit env vars have production-safe defaults: `GITHUB_CACHE_TTL_SECONDS=300`, `GITHUB_CACHE_MAX_ITEMS=256`, `APP_CACHE_TTL_SECONDS=60`, `APP_CACHE_MAX_ITEMS=512`, `RATE_LIMIT_AUTH_REQUESTS=10`, `RATE_LIMIT_API_REQUESTS=120`, and `RATE_LIMIT_EXPENSIVE_REQUESTS=30`.
 
 Production URL env vars:
 
@@ -90,7 +96,7 @@ Production URL env vars:
 PUBLIC_BASE_URL=https://api.opensauce.itdogtics.com
 GITHUB_REDIRECT_URI=https://api.opensauce.itdogtics.com/oauth/github/callback
 OAUTH_SUCCESS_REDIRECT=https://opensauce.itdogtics.com/oauth/callback
-CORS_ALLOWED_ORIGIN=https://opensauce.itdogtics.com
+CORS_ALLOWED_ORIGINS=https://opensauce.itdogtics.com
 ```
 
 Optional backend tuning env vars: `GUNICORN_WORKERS`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`, `GUNICORN_GRACEFUL_TIMEOUT`, `GUNICORN_KEEPALIVE`, and `GUNICORN_LOG_LEVEL`. The defaults use threaded workers so local OAuth/Supabase waits and dropped browser sockets do not monopolize the only request worker.

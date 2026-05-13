@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
-import { getDashboard, getSkills } from '../../api/achievements'
+import { getDashboard, getAchievements } from '../../api/achievements'
 import { getLevel } from '../../config/badges'
 
 const MEDALS = ['🥇', '🥈', '🥉']
@@ -66,8 +66,8 @@ export default function Contributions() {
       .catch(() => setData(null))
       .finally(() => setLoading(false))
 
-    getSkills()
-      .then((r) => setPlans(r.data.skills || []))
+    getAchievements()
+      .then((r) => setPlans(r.data.achievements || []))
       .catch(() => setPlans([]))
       .finally(() => setPlansLoading(false))
   }, [])

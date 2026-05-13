@@ -3,7 +3,7 @@ from urllib.parse import urlparse, urlunparse
 
 from flask import Flask, jsonify, redirect, request
 
-from .config import CORS_ALLOWED_ORIGIN, SECRET_KEY
+from .config import CORS_ALLOWED_ORIGINS, SECRET_KEY
 from .db import init_db
 from .routes.achievements import achievements_bp
 from .routes.activities import activities_bp
@@ -24,8 +24,9 @@ def create_app():
 
     @app.after_request
     def add_cors_headers(response):
-        if request.headers.get("Origin") == CORS_ALLOWED_ORIGIN:
-            response.headers["Access-Control-Allow-Origin"] = CORS_ALLOWED_ORIGIN
+        origin = request.headers.get("Origin")
+        if origin in CORS_ALLOWED_ORIGINS:
+            response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
             response.headers["Vary"] = "Origin"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"

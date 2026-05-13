@@ -13,6 +13,7 @@ from ..auth import create_token, require_auth
 from ..cache import cache_delete_prefix, cache_get, cache_set
 from ..config import LOCAL_AUTH_ENABLED, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL
 from ..db import get_connection, row_to_dict, transaction
+from ..rate_limit import rate_limit
 from ..responses import error, require_fields
 
 
@@ -143,6 +144,7 @@ def _profile_exists(username):
 
 
 @users_bp.post("/user")
+@rate_limit("auth")
 def create_user():
     data = request.get_json(silent=True) or {}
     missing = require_fields(data, ["name", "username", "email", "password"])
@@ -177,6 +179,7 @@ def create_user():
 
 
 @users_bp.post("/login")
+@rate_limit("auth")
 def login():
     data = request.get_json(silent=True) or {}
     missing = require_fields(data, ["email", "password"])
@@ -210,12 +213,14 @@ def login():
 
 @users_bp.get("/user")
 @require_auth
+@rate_limit("api")
 def current_user():
     return jsonify({"authenticated": True, "user": g.current_user})
 
 
 @users_bp.get("/preferences")
 @require_auth
+@rate_limit("api")
 def get_preferences():
     cache_key = ("preferences", str(g.current_user["id"]))
     cached = cache_get(cache_key)
@@ -234,6 +239,7 @@ def get_preferences():
 
 @users_bp.put("/preferences")
 @require_auth
+@rate_limit("api")
 def set_preferences():
     data = request.get_json(silent=True) or {}
 

@@ -3,6 +3,7 @@ from flask import Blueprint, g, jsonify, request
 from ..auth import require_auth
 from ..db import get_connection, row_to_dict, transaction
 from ..github import normalize_github_repo
+from ..rate_limit import rate_limit
 from ..responses import error, require_fields
 
 
@@ -11,6 +12,7 @@ activities_bp = Blueprint("activities", __name__)
 
 @activities_bp.post("/activity")
 @require_auth
+@rate_limit("api")
 def add_activity():
     data = request.get_json(silent=True) or {}
     missing = require_fields(data, ["github_repo"])
