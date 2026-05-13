@@ -1,4 +1,5 @@
 import json
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -6,9 +7,11 @@ from urllib.request import Request, urlopen
 
 import psycopg
 from flask import Blueprint, g, jsonify, request
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..auth import create_token, require_auth
-from ..config import SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL
+from ..cache import cache_delete_prefix, cache_get, cache_set
+from ..config import LOCAL_AUTH_ENABLED, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL
 from ..db import get_connection, row_to_dict, transaction
 from ..responses import error, require_fields
 
@@ -36,6 +39,49 @@ def _supabase_request(path, payload):
     return supabase_auth_request(path, payload)
 
 
+def _local_signup(email, password, name, username):
+    user_id = str(uuid.uuid4())
+    metadata = json.dumps({"name": name, "username": username})
+    try:
+        with transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO auth.users (id, email, password_hash, raw_user_meta_data)
+                VALUES (?, ?, ?, ?::jsonb)
+                """,
+                (user_id, email, generate_password_hash(password, method="pbkdf2:sha256"), metadata),
+            )
+    except psycopg.errors.UniqueViolation as exc:
+        raise ValueError("Email already exists") from exc
+    return {"user": {"id": user_id, "email": email}}
+
+
+def _local_login(email, password):
+    with get_connection() as connection:
+        user = connection.execute(
+            "SELECT id, email, password_hash FROM auth.users WHERE email = ?",
+            (email,),
+        ).fetchone()
+    if user is None or not user["password_hash"] or not check_password_hash(user["password_hash"], password):
+        raise ValueError("Invalid email or password")
+    return {"user": {"id": str(user["id"]), "email": user["email"]}}
+
+
+def _auth_request(path, payload):
+    if LOCAL_AUTH_ENABLED:
+        if path == "/auth/v1/signup":
+            data = payload.get("data") or {}
+            return _local_signup(
+                payload["email"],
+                payload["password"],
+                data.get("name") or payload["email"].split("@", 1)[0],
+                data.get("username") or payload["email"].split("@", 1)[0],
+            )
+        if path == "/auth/v1/token?grant_type=password":
+            return _local_login(payload["email"], payload["password"])
+    return _supabase_request(path, payload)
+
+
 def supabase_auth_request(path, payload, bearer_token=None):
     if not SUPABASE_URL or not SUPABASE_PUBLISHABLE_KEY:
         raise RuntimeError("SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are required")
@@ -61,6 +107,15 @@ def supabase_auth_request(path, payload, bearer_token=None):
 def upsert_profile(user_id, name, username):
     try:
         with transaction() as connection:
+            if LOCAL_AUTH_ENABLED:
+                connection.execute(
+                    """
+                    INSERT INTO auth.users (id)
+                    VALUES (?)
+                    ON CONFLICT(id) DO NOTHING
+                    """,
+                    (user_id,),
+                )
             profile = connection.execute(
                 """
                 INSERT INTO profiles (id, name, username)
@@ -74,7 +129,9 @@ def upsert_profile(user_id, name, username):
             ).fetchone()
     except psycopg.errors.UniqueViolation:
         return None
-    return row_to_dict(profile)
+    user = row_to_dict(profile)
+    cache_delete_prefix(("user", str(user_id)))
+    return user
 
 
 def _profile_exists(username):
@@ -96,7 +153,7 @@ def create_user():
         return error("Username already exists", 409)
 
     try:
-        auth_payload = _supabase_request(
+        auth_payload = _auth_request(
             "/auth/v1/signup",
             {
                 "email": data["email"],
@@ -127,7 +184,7 @@ def login():
         return error(missing)
 
     try:
-        auth_payload = _supabase_request(
+        auth_payload = _auth_request(
             "/auth/v1/token?grant_type=password",
             {"email": data["email"], "password": data["password"]},
         )
@@ -160,12 +217,19 @@ def current_user():
 @users_bp.get("/preferences")
 @require_auth
 def get_preferences():
+    cache_key = ("preferences", str(g.current_user["id"]))
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return jsonify({"preferences": cached})
+
     with get_connection() as connection:
         row = connection.execute(
             "SELECT preferences FROM profiles WHERE id = ?",
             (g.current_user["id"],),
         ).fetchone()
-    return jsonify({"preferences": _load_preferences(row["preferences"] if row else None)})
+    preferences = _load_preferences(row["preferences"] if row else None)
+    cache_set(cache_key, preferences)
+    return jsonify({"preferences": preferences})
 
 
 @users_bp.put("/preferences")
@@ -187,4 +251,7 @@ def set_preferences():
             (payload, g.current_user["id"]),
         )
 
-    return jsonify({"preferences": _load_preferences(payload)})
+    preferences = _load_preferences(payload)
+    cache_delete_prefix(("preferences", str(g.current_user["id"])))
+    cache_set(("preferences", str(g.current_user["id"])), preferences)
+    return jsonify({"preferences": preferences})

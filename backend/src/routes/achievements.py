@@ -1,13 +1,21 @@
 import base64
 import json
-from urllib.parse import urlencode
 
 from flask import Blueprint, Response, g, jsonify, request
 
 from ..auth import create_temporary_achievement_token, require_auth, require_achievement_auth
+from ..cache import cache_delete_prefix, cache_get, cache_set
 from ..config import PUBLIC_BASE_URL
 from ..db import get_connection, row_to_dict, transaction
-from ..github import fetch_random_open_issue
+from ..github import (
+    fetch_github_repository,
+    fetch_pull_request_state,
+    fetch_random_open_issue,
+    github_repo_url,
+    normalize_github_repo,
+    parse_github_pull_request_url,
+    search_github_repositories,
+)
 from ..responses import error, require_fields
 
 
@@ -25,6 +33,8 @@ ACHIEVEMENT_SORTS = {
     "oldest": "a.created_at ASC, a.id ASC",
     "name": "lower(a.name) ASC, a.id DESC",
 }
+
+STATUSES = {"started", "submitted", "merged", "closed"}
 
 
 def _parse_int_query(name, default=None, minimum=None, maximum=None):
@@ -45,9 +55,80 @@ def _parse_int_query(name, default=None, minimum=None, maximum=None):
     return value, None
 
 
+def _repo_from_request(data):
+    explicit = data.get("github_repo") or data.get("repo")
+    repo = normalize_github_repo(explicit)
+    if repo:
+        return repo
+
+    for key in ("github_repo_url", "project_url", "issue_url", "github_pr_url", "url"):
+        repo = normalize_github_repo(data.get(key))
+        if repo:
+            return repo
+    return None
+
+
+def _pr_data_from_request(data):
+    pr_url = data.get("github_pr_url") or data.get("pull_request_url")
+    if not pr_url and data.get("url") and "/pull/" in str(data.get("url")):
+        pr_url = data.get("url")
+
+    parsed = parse_github_pull_request_url(pr_url)
+    if not parsed:
+        return {"github_pr_url": pr_url, "github_pr_number": None}
+    return parsed
+
+
+def _status_for_insert(data, pr_data):
+    requested = data.get("status")
+    if requested:
+        if requested not in STATUSES:
+            return None, error("status must be one of: started, submitted, merged, closed")
+        return requested, None
+    if pr_data.get("github_pr_number"):
+        return "submitted", None
+    return "started", None
+
+
+def _timestamps_for_status(status):
+    return {
+        "submitted_at": "now()" if status in {"submitted", "merged", "closed"} else "NULL",
+        "merged_at": "now()" if status == "merged" else "NULL",
+        "closed_at": "now()" if status == "closed" else "NULL",
+    }
+
+
+@achievements_bp.get("/github/search")
+def search_github():
+    limit, limit_error = _parse_int_query("limit", default=20, minimum=1, maximum=50)
+    if limit_error:
+        return limit_error
+    page, page_error = _parse_int_query("page", default=1, minimum=1, maximum=34)
+    if page_error:
+        return page_error
+    return jsonify(search_github_repositories(request.args.get("q"), limit, page))
+
+
+@achievements_bp.get("/github/repos/<path:github_repo>")
+def get_github_repo(github_repo):
+    repo = fetch_github_repository(github_repo)
+    if repo is None:
+        return error("GitHub repository not found", 404)
+    return jsonify({"repository": repo})
+
+
 @achievements_bp.get("/achievements")
 @require_auth
 def list_achievements():
+    cache_key = (
+        "achievements",
+        str(g.current_user["id"]),
+        request.query_string.decode("utf-8", errors="ignore"),
+    )
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+
     limit, limit_error = _parse_int_query("limit", default=20, minimum=1, maximum=100)
     if limit_error:
         return limit_error
@@ -56,13 +137,14 @@ def list_achievements():
     if offset_error:
         return offset_error
 
-    project_id, project_error = _parse_int_query("project_id", minimum=1)
-    if project_error:
-        return project_error
-
     issue_number, issue_error = _parse_int_query("issue_number", minimum=1)
     if issue_error:
         return issue_error
+
+    github_repo = normalize_github_repo(request.args.get("github_repo") or request.args.get("repo"))
+    status = request.args.get("status")
+    if status and status not in STATUSES:
+        return error("status must be one of: started, submitted, merged, closed")
 
     sort = request.args.get("sort", "recent")
     if sort not in ACHIEVEMENT_SORTS:
@@ -71,12 +153,15 @@ def list_achievements():
     filters = ["a.user_id = ?"]
     params = [g.current_user["id"]]
 
-    if project_id is not None:
-        filters.append("a.project_id = ?")
-        params.append(project_id)
+    if github_repo:
+        filters.append("a.github_repo = ?")
+        params.append(github_repo)
     if issue_number is not None:
         filters.append("a.issue_number = ?")
         params.append(issue_number)
+    if status:
+        filters.append("a.status = ?")
+        params.append(status)
 
     query = request.args.get("q")
     if query:
@@ -86,14 +171,15 @@ def list_achievements():
                 a.name ILIKE ?
                 OR a.description ILIKE ?
                 OR a.url ILIKE ?
+                OR a.github_repo ILIKE ?
+                OR a.github_pr_url ILIKE ?
                 OR a.issue_title ILIKE ?
                 OR a.issue_url ILIKE ?
-                OR p.url ILIKE ?
             )
             """
         )
         like_query = f"%{query}%"
-        params.extend([like_query] * 6)
+        params.extend([like_query] * 7)
 
     where_clause = " AND ".join(filters)
     order_clause = ACHIEVEMENT_SORTS[sort]
@@ -104,18 +190,23 @@ def list_achievements():
             SELECT
                 a.id,
                 a.user_id,
-                a.project_id,
-                p.url AS project_url,
-                p.description AS project_description,
+                a.github_repo,
+                ('https://github.com/' || a.github_repo) AS github_repo_url,
                 a.name,
                 a.description,
                 a.url,
+                a.github_pr_url,
+                a.github_pr_number,
                 a.issue_url,
                 a.issue_title,
                 a.issue_number,
+                a.status,
+                a.started_at,
+                a.submitted_at,
+                a.merged_at,
+                a.closed_at,
                 a.created_at
             FROM achievements a
-            LEFT JOIN projects p ON p.id = a.project_id
             WHERE {where_clause}
             ORDER BY {order_clause}
             LIMIT ? OFFSET ?
@@ -126,29 +217,29 @@ def list_achievements():
             f"""
             SELECT COUNT(*) AS total
             FROM achievements a
-            LEFT JOIN projects p ON p.id = a.project_id
             WHERE {where_clause}
             """,
             params,
         ).fetchone()["total"]
 
-    return jsonify(
-        {
-            "achievements": [row_to_dict(row) for row in rows],
-            "pagination": {
-                "limit": limit,
-                "offset": offset,
-                "total": total,
-                "has_more": offset + len(rows) < total,
-            },
-            "filters": {
-                "project_id": project_id,
-                "issue_number": issue_number,
-                "q": query,
-                "sort": sort,
-            },
-        }
-    )
+    payload = {
+        "achievements": [row_to_dict(row) for row in rows],
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "total": total,
+            "has_more": offset + len(rows) < total,
+        },
+        "filters": {
+            "github_repo": github_repo,
+            "issue_number": issue_number,
+            "status": status,
+            "q": query,
+            "sort": sort,
+        },
+    }
+    cache_set(cache_key, payload)
+    return jsonify(payload)
 
 
 @achievements_bp.get("/skills")
@@ -162,66 +253,58 @@ def list_skills():
     return jsonify({"skills": payload["achievements"], "pagination": payload["pagination"]})
 
 
-def _parse_project_ids(data):
-    project_ids = data.get("project_ids", data.get("project_id", []))
-    if project_ids in (None, ""):
+def _parse_github_repos(data):
+    raw_repos = data.get("github_repos", data.get("github_repo", []))
+    if raw_repos in (None, ""):
         return []
-    if isinstance(project_ids, int):
-        project_ids = [project_ids]
-    if isinstance(project_ids, str):
-        project_ids = [project_ids]
+    if isinstance(raw_repos, str):
+        raw_repos = [raw_repos]
 
-    try:
-        return [int(project_id) for project_id in project_ids]
-    except (TypeError, ValueError):
-        return None
+    repos = []
+    for raw_repo in raw_repos:
+        repo = normalize_github_repo(raw_repo)
+        if not repo:
+            return None
+        repos.append(repo)
+    return list(dict.fromkeys(repos))
 
 
-def _build_skill_prompt(projects, achievement_token, api_base_url):
-    project_list = "\n".join(
-        f"- Project {project['id']}: {project['url']} - {project['description']}"
-        for project in projects
-    )
-    project_urls = "\n".join(f"- {project['url']}" for project in projects)
-    assigned_issue = next(
-        (project.get("assigned_issue") for project in projects if project.get("assigned_issue")),
-        None,
-    )
-    issue_section = f"""## Assigned Issue
+def _build_skill_prompt(github_repos, achievement_token, api_base_url, assigned_issue):
+    repo_list = "\n".join(f"- {repo}: {github_repo_url(repo)}" for repo in github_repos)
+    issue_section = ""
+    if assigned_issue:
+        issue_section = f"""## Assigned Issue
 
-- Project: {assigned_issue['project_url']}
+- Repository: {assigned_issue['github_repo']}
 - Issue: #{assigned_issue['number']} {assigned_issue['title']}
 - URL: {assigned_issue['url']}
 
-Work on this assigned issue. The achievement token already contains this issue context, so the final `/achieve` call does not need `project_id`, `project_url`, or `issue_url`.
+Work on this assigned issue. The achievement token already contains this issue context, so the final `/achieve` call does not need `github_repo` or `issue_url`.
 """
 
     return f"""# Open Source Volunteer Agent
 
-You are helping with volunteer work on selected open source projects.
+You are helping with volunteer work on selected open source repositories.
 
-## Selected Projects
+## Selected Repositories
 
-{project_list}
+{repo_list}
 
 {issue_section}
 
 ## Mission
 
-Complete one useful contribution for the assigned issue.
+Complete one useful contribution for the assigned repository.
 
-1. Clone the repository locally:
-   `git clone <project-url>`
-2. Enter the repository and pull the latest default branch.
-3. Review the assigned issue and confirm it is still open, unassigned, and not already being handled in an existing pull request.
-4. Analyze the codebase enough to understand the issue and the expected project conventions.
-5. Create a focused branch for the fix.
-6. Implement the fix with the smallest maintainable change.
-7. Run the relevant tests, linters, or validation commands available in the repository.
-8. Commit the change with a clear message.
-9. Push the branch to your fork or configured remote.
-10. Open a merge request or pull request against the upstream project.
-11. Report the completed work back to OpenSauce by calling:
+1. Clone the repository locally.
+2. Review the assigned issue if one was provided.
+3. Create a focused branch for the fix.
+4. Implement the fix with the smallest maintainable change.
+5. Run the relevant tests, linters, or validation commands available in the repository.
+6. Commit the change with a clear message.
+7. Push the branch to your fork or configured remote.
+8. Open a pull request against the upstream project.
+9. Report the completed work back to OpenSauce by calling:
 
 ```http
 POST {api_base_url}/achieve
@@ -230,8 +313,8 @@ Content-Type: application/json
 
 {{
   "name": "Open source contribution",
-  "url": "<merge-request-url>",
-  "description": "Fixed the assigned issue and opened <merge-request-url>"
+  "github_pr_url": "<pull-request-url>",
+  "description": "Fixed the assigned issue and opened <pull-request-url>"
 }}
 ```
 
@@ -241,12 +324,6 @@ Content-Type: application/json
 - Prefer issues with no assignee and no linked active pull request.
 - Do not take over work that another contributor is already handling.
 - Keep the change small enough for maintainers to review comfortably.
-- If a selected project is unavailable, try the next selected project.
-- The achievement token already contains the assigned issue context.
-
-## Project URLs
-
-{project_urls}
 """
 
 
@@ -265,15 +342,17 @@ def _top_repositories(connection, since_modifier, top_n):
     rows = connection.execute(
         """
         SELECT
-            p.id AS project_id,
-            p.url AS project_url,
-            p.description AS project_description,
-            COUNT(a.id) AS contributions
+            a.github_repo,
+            ('https://github.com/' || a.github_repo) AS github_repo_url,
+            COUNT(a.id) AS contributions,
+            COUNT(*) FILTER (WHERE a.status = 'started') AS started_count,
+            COUNT(*) FILTER (WHERE a.status = 'submitted') AS submitted_count,
+            COUNT(*) FILTER (WHERE a.status = 'merged') AS merged_count,
+            COUNT(*) FILTER (WHERE a.status = 'closed') AS closed_count
         FROM achievements a
-        JOIN projects p ON p.id = a.project_id
         WHERE a.created_at >= now() - (?::interval)
-        GROUP BY p.id, p.url, p.description
-        ORDER BY contributions DESC, p.id ASC
+        GROUP BY a.github_repo
+        ORDER BY contributions DESC, a.github_repo ASC
         LIMIT ?
         """,
         (since_modifier, top_n),
@@ -288,12 +367,16 @@ def _top_users(connection, since_modifier, top_n):
             u.id AS user_id,
             u.name,
             u.username,
-            COUNT(a.id) AS contributions
+            COUNT(a.id) AS contributions,
+            COUNT(*) FILTER (WHERE a.status = 'started') AS started_count,
+            COUNT(*) FILTER (WHERE a.status = 'submitted') AS submitted_count,
+            COUNT(*) FILTER (WHERE a.status = 'merged') AS merged_count,
+            COUNT(*) FILTER (WHERE a.status = 'closed') AS closed_count
         FROM achievements a
         JOIN profiles u ON u.id = a.user_id
         WHERE a.created_at >= now() - (?::interval)
         GROUP BY u.id, u.name, u.username
-        ORDER BY contributions DESC, u.id ASC
+        ORDER BY merged_count DESC, submitted_count DESC, started_count DESC, u.id ASC
         LIMIT ?
         """,
         (since_modifier, top_n),
@@ -301,43 +384,20 @@ def _top_users(connection, since_modifier, top_n):
     return [row_to_dict(row) for row in rows]
 
 
-def _resolve_project_id_from_token(data):
+def _resolve_github_repo_from_token(data):
     assigned_issue = g.token_payload.get("assigned_issue")
     if assigned_issue:
-        return assigned_issue["project_id"], None
+        return assigned_issue["github_repo"], None
 
-    token_projects = g.token_payload.get("projects", [])
-    token_project_ids = g.token_payload.get("project_ids", [])
-
-    if not token_projects and token_project_ids:
-        token_projects = [{"id": project_id} for project_id in token_project_ids]
-
-    project_id = data.get("project_id")
-    if project_id is not None:
-        try:
-            project_id = int(project_id)
-        except (TypeError, ValueError):
-            return None, error("project_id must be an integer")
-    elif data.get("project_url"):
-        matching_projects = [
-            project
-            for project in token_projects
-            if project.get("url") == data.get("project_url")
-        ]
-        if not matching_projects:
-            return None, error("Temporary token cannot record work for this project", 403)
-        project_id = matching_projects[0]["id"]
-    elif len(token_projects) == 1:
-        project_id = token_projects[0]["id"]
-    else:
-        return None, error(
-            "project_id or project_url is required for multi-project temporary tokens"
-        )
-
-    if project_id not in [project["id"] for project in token_projects]:
-        return None, error("Temporary token cannot record work for this project", 403)
-
-    return project_id, None
+    token_repos = g.token_payload.get("github_repos", [])
+    repo = _repo_from_request(data)
+    if repo is None and len(token_repos) == 1:
+        repo = token_repos[0]
+    if repo is None:
+        return None, error("github_repo is required for this achievement token")
+    if repo not in token_repos:
+        return None, error("Temporary token cannot record work for this repository", 403)
+    return repo, None
 
 
 def _resolve_issue_from_token(data):
@@ -379,35 +439,20 @@ def _skill_request_data_from_args():
             )
         except (ValueError, TypeError):
             decoded = {}
-        project_ids = decoded.get("p") or []
-        if not isinstance(project_ids, list):
-            project_ids = [project_ids]
-        return {
-            "project_ids": [str(pid) for pid in project_ids],
-            "user_id": decoded.get("u"),
-        }
+        repos = decoded.get("r") or []
+        if not isinstance(repos, list):
+            repos = [repos]
+        return {"github_repos": repos, "user_id": decoded.get("u")}
     return {
-        "project_ids": request.args.getlist("project_id")
-        or request.args.getlist("project_ids"),
+        "github_repos": request.args.getlist("github_repo")
+        or request.args.getlist("github_repos"),
         "user_id": request.args.get("user_id"),
     }
 
 
-def _build_magic_token(user_id, project_ids):
-    payload = json.dumps(
-        {"u": user_id, "p": project_ids}, separators=(",", ":")
-    ).encode("utf-8")
+def _build_magic_token(user_id, github_repos):
+    payload = json.dumps({"u": user_id, "r": github_repos}, separators=(",", ":")).encode("utf-8")
     return base64.urlsafe_b64encode(payload).decode("utf-8").rstrip("=")
-
-
-def _pick_best_issue(projects, _user_skills=None):
-    """Pick an issue from the selected projects.
-
-    Smart matching now lives in ``POST /projects/recommend`` (called from
-    the marketplace UI), so this stays simple and fast: just delegate to
-    ``fetch_random_open_issue``.
-    """
-    return fetch_random_open_issue(projects)
 
 
 def _build_skill_response_payload(data):
@@ -415,9 +460,11 @@ def _build_skill_response_payload(data):
     if missing:
         return None, error(missing)
 
-    project_ids = _parse_project_ids(data)
-    if project_ids is None:
-        return None, error("project_ids must be a list of project IDs")
+    github_repos = _parse_github_repos(data)
+    if github_repos is None:
+        return None, error("github_repos must contain GitHub repositories like owner/repo")
+    if not github_repos:
+        return None, error("github_repo is required")
 
     with get_connection() as connection:
         user = connection.execute(
@@ -427,54 +474,16 @@ def _build_skill_response_payload(data):
         if user is None:
             return None, error("User not found", 404)
 
-        if project_ids:
-            placeholders = ",".join("?" for _ in project_ids)
-            projects = connection.execute(
-                f"""
-                SELECT id, url, description
-                FROM projects
-                WHERE id IN ({placeholders})
-                ORDER BY id
-                """,
-                project_ids,
-            ).fetchall()
-        else:
-            projects = connection.execute(
-                """
-                SELECT id, url, description
-                FROM projects
-                ORDER BY random()
-                LIMIT 3
-                """
-            ).fetchall()
-
-    if project_ids and len(projects) != len(set(project_ids)):
-        found_ids = {project["id"] for project in projects}
-        missing_ids = [
-            project_id for project_id in project_ids if project_id not in found_ids
-        ]
-        return None, error(f"Project not found: {', '.join(map(str, missing_ids))}", 404)
-    if not projects:
-        return None, error("No projects available to generate a skill prompt", 404)
-
-    project_data = [row_to_dict(project) for project in projects]
-    assigned_issue = _pick_best_issue(project_data, None)
+    assigned_issue = fetch_random_open_issue(github_repos)
     if not assigned_issue:
-        return None, error(
-            "No open unassigned GitHub issue available for selected projects"
-        )
-
-    if assigned_issue:
-        for project in project_data:
-            if project["id"] == assigned_issue["project_id"]:
-                project["assigned_issue"] = assigned_issue
+        return None, error("No open unassigned GitHub issue available for selected repositories")
 
     token = create_temporary_achievement_token(
-        data["user_id"], project_data, assigned_issue=assigned_issue
+        data["user_id"], github_repos, assigned_issue=assigned_issue
     )
     base_url = PUBLIC_BASE_URL or request.url_root.rstrip("/")
-    prompt = _build_skill_prompt(project_data, token, base_url)
-    magic_token = _build_magic_token(data["user_id"], project_ids)
+    prompt = _build_skill_prompt(github_repos, token, base_url, assigned_issue)
+    magic_token = _build_magic_token(data["user_id"], github_repos)
     magic_url = f"{base_url}/skill.md?t={magic_token}"
 
     return {
@@ -487,7 +496,7 @@ def _build_skill_response_payload(data):
             "scope": "achievement",
             "expires_in": 3600,
         },
-        "projects": project_data,
+        "github_repos": github_repos,
         "assigned_issue": assigned_issue,
         "user": row_to_dict(user),
     }, None
@@ -525,6 +534,11 @@ def get_achievement_dashboard():
     if top_n is None:
         return error("top_n must be an integer between 1 and 100")
 
+    cache_key = ("achievement_dashboard", top_n)
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+
     with get_connection() as connection:
         dashboard = {
             window: {
@@ -534,7 +548,9 @@ def get_achievement_dashboard():
             for window, modifier in WINDOWS.items()
         }
 
-    return jsonify({"top_n": top_n, "windows": dashboard})
+    payload = {"top_n": top_n, "windows": dashboard}
+    cache_set(cache_key, payload)
+    return jsonify(payload)
 
 
 @achievements_bp.post("/achieve")
@@ -545,56 +561,75 @@ def add_achievement():
     if missing:
         return error(missing)
 
+    pr_data = _pr_data_from_request(data)
     if g.auth_scope == "achievement":
-        project_id, project_error = _resolve_project_id_from_token(data)
-        if project_error:
-            return project_error
+        github_repo, repo_error = _resolve_github_repo_from_token(data)
+        if repo_error:
+            return repo_error
         issue_data, issue_error = _resolve_issue_from_token(data)
         if issue_error:
             return issue_error
     else:
-        project_id = data.get("project_id")
-        if project_id is not None:
-            try:
-                project_id = int(project_id)
-            except (TypeError, ValueError):
-                return error("project_id must be an integer")
+        github_repo = _repo_from_request(data) or pr_data.get("github_repo")
+        if not github_repo:
+            return error("github_repo is required")
         issue_data, issue_error = _issue_data_from_request(data)
         if issue_error:
             return issue_error
 
-    with transaction() as connection:
-        if project_id is not None:
-            project = connection.execute(
-                "SELECT id FROM projects WHERE id = ?",
-                (project_id,),
-            ).fetchone()
-            if project is None:
-                return error("Project not found", 404)
+    if pr_data.get("github_repo") and pr_data["github_repo"] != github_repo:
+        return error("Pull request URL does not match github_repo")
 
+    status, status_error = _status_for_insert(data, pr_data)
+    if status_error:
+        return status_error
+    timestamps = _timestamps_for_status(status)
+
+    with transaction() as connection:
         cursor = connection.execute(
-            """
+            f"""
             INSERT INTO achievements (
                 user_id,
-                project_id,
+                github_repo,
                 name,
                 description,
                 url,
+                github_pr_url,
+                github_pr_number,
                 issue_url,
                 issue_title,
-                issue_number
+                issue_number,
+                status,
+                submitted_at,
+                merged_at,
+                closed_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {timestamps['submitted_at']}, {timestamps['merged_at']}, {timestamps['closed_at']})
             """,
             (
                 g.current_user["id"],
-                project_id,
+                github_repo,
                 data["name"],
                 data.get("description"),
-                data.get("url"),
+                data.get("url") or pr_data.get("github_pr_url"),
+                pr_data.get("github_pr_url"),
+                pr_data.get("github_pr_number"),
                 issue_data["issue_url"],
                 issue_data["issue_title"],
                 issue_data["issue_number"],
+                status,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO activities (user_id, github_repo, type, url)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                g.current_user["id"],
+                github_repo,
+                status,
+                pr_data.get("github_pr_url") or data.get("url"),
             ),
         )
         achievement = connection.execute(
@@ -602,13 +637,21 @@ def add_achievement():
             SELECT
                 id,
                 user_id,
-                project_id,
+                github_repo,
+                ('https://github.com/' || github_repo) AS github_repo_url,
                 name,
                 description,
                 url,
+                github_pr_url,
+                github_pr_number,
                 issue_url,
                 issue_title,
                 issue_number,
+                status,
+                started_at,
+                submitted_at,
+                merged_at,
+                closed_at,
                 created_at
             FROM achievements
             WHERE id = ?
@@ -616,4 +659,82 @@ def add_achievement():
             (cursor.lastrowid,),
         ).fetchone()
 
+    cache_delete_prefix(("achievements", str(g.current_user["id"])))
+    cache_delete_prefix(("achievement_dashboard",))
     return jsonify({"achievement": row_to_dict(achievement)}), 201
+
+
+@achievements_bp.post("/achievements/<int:achievement_id>/sync")
+@require_auth
+def sync_achievement(achievement_id):
+    with transaction() as connection:
+        achievement = connection.execute(
+            """
+            SELECT id, user_id, github_repo, github_pr_number, status
+            FROM achievements
+            WHERE id = ? AND user_id = ?
+            """,
+            (achievement_id, g.current_user["id"]),
+        ).fetchone()
+        if achievement is None:
+            return error("Achievement not found", 404)
+        if not achievement["github_pr_number"]:
+            return error("Achievement has no pull request to sync")
+
+        new_status = fetch_pull_request_state(
+            achievement["github_repo"], achievement["github_pr_number"]
+        )
+        if new_status is None:
+            return error("Could not fetch pull request state from GitHub", 502)
+
+        if new_status != achievement["status"]:
+            timestamps = _timestamps_for_status(new_status)
+            connection.execute(
+                f"""
+                UPDATE achievements
+                SET status = ?,
+                    submitted_at = COALESCE(submitted_at, {timestamps['submitted_at']}),
+                    merged_at = COALESCE(merged_at, {timestamps['merged_at']}),
+                    closed_at = COALESCE(closed_at, {timestamps['closed_at']})
+                WHERE id = ?
+                """,
+                (new_status, achievement_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO activities (user_id, github_repo, type)
+                VALUES (?, ?, ?)
+                """,
+                (g.current_user["id"], achievement["github_repo"], new_status),
+            )
+            cache_delete_prefix(("achievements", str(g.current_user["id"])))
+            cache_delete_prefix(("achievement_dashboard",))
+
+        updated = connection.execute(
+            """
+            SELECT
+                id,
+                user_id,
+                github_repo,
+                ('https://github.com/' || github_repo) AS github_repo_url,
+                name,
+                description,
+                url,
+                github_pr_url,
+                github_pr_number,
+                issue_url,
+                issue_title,
+                issue_number,
+                status,
+                started_at,
+                submitted_at,
+                merged_at,
+                closed_at,
+                created_at
+            FROM achievements
+            WHERE id = ?
+            """,
+            (achievement_id,),
+        ).fetchone()
+
+    return jsonify({"achievement": row_to_dict(updated)})

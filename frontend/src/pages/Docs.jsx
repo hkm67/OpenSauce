@@ -59,11 +59,11 @@ Authorization: Bearer <opensauce-api-token>
 **POST /user** — Create account through backend-managed Supabase Auth
 **POST /login** — Authenticate through backend-managed Supabase Auth
 **GET /user** — Current authenticated profile
-**GET /projects** — List all projects (public)
-**POST /project** — Add a project (auth required)
-**POST /activity** — Record a contribution (auth required)
+**GET /github/search?q=react&page=1&limit=20** — Search public GitHub repositories with pagination
+**GET /github/repos/:owner/:repo** — Fetch a GitHub repository reference
+**POST /activity** — Record a contribution state event with github_repo
 **GET /skill** — Generate SKILL.md and a temporary achievement token
-**POST /achieve** — Add a contribution with either a Supabase token or temporary achievement token
+**POST /achieve** — Add or submit a contribution using github_repo / github_pr_url
     `,
   },
   {

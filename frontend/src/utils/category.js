@@ -26,8 +26,8 @@ export const CATEGORY_COLORS = {
   'Other':          '#cccccc',
 }
 
-export function categorizeProject({ url = '', description = '' } = {}) {
-  const haystack = `${url} ${description}`.toLowerCase()
+export function categorizeProject({ url = '', github_repo = '', description = '', language = '' } = {}) {
+  const haystack = `${github_repo} ${url} ${description} ${language}`.toLowerCase()
   for (const cat of CATEGORIES) {
     if (CATEGORY_KEYWORDS[cat].some((kw) => haystack.includes(kw))) {
       return cat

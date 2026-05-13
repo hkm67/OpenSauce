@@ -21,6 +21,10 @@ function extractRepo(url) {
   return m ? m[1].replace(/\/$/, '') : url
 }
 
+function repoRef(project) {
+  return project?.github_repo || extractRepo(project?.url || '')
+}
+
 export default function ContributionFlow({ projects, onClose, preselect = null }) {
   const { user } = useAuth()
   const [step, setStep] = useState(0)
@@ -63,7 +67,7 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
   )
   const isRecommended = (project) => {
     if (skillKeywords.length === 0) return false
-    const haystack = (project.url + ' ' + project.description).toLowerCase()
+    const haystack = `${repoRef(project)} ${project.url || ''} ${project.description || ''}`.toLowerCase()
     return skillKeywords.some((kw) => kw.length > 2 && haystack.includes(kw))
   }
 
@@ -72,17 +76,17 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
 
   const pickRandom = () => {
     const idx = Math.floor(Math.random() * projects.length)
-    setSelected([projects[idx].id])
+    setSelected([repoRef(projects[idx])])
   }
 
   const filteredProjects = (category === 'All' ? projects : projects.filter((p) => {
-    const haystack = (p.url + ' ' + p.description).toLowerCase()
+    const haystack = `${repoRef(p)} ${p.url || ''} ${p.description || ''}`.toLowerCase()
     return (CATEGORY_KEYWORDS[category] || []).some((kw) => haystack.includes(kw))
   })).slice().sort((a, b) => (isRecommended(b) ? 1 : 0) - (isRecommended(a) ? 1 : 0))
 
-  const selectedProjects = projects.filter((p) => selected.includes(p.id))
+  const selectedProjects = projects.filter((p) => selected.includes(repoRef(p)))
 
-  const selectedRepoNames = selectedProjects.map((p) => extractRepo(p.url)).join(', ')
+  const selectedRepoNames = selectedProjects.map((p) => repoRef(p)).join(', ')
   const agentPrompt = magicUrl
     ? `Start an OpenSauce contribution for ${selectedRepoNames || 'the selected open source project'} at ${magicUrl}`
     : skillPrompt
@@ -107,9 +111,10 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
     const project = selectedProjects[0]
     addAchievement({
       name: 'Contribution Plan Started',
-      project_id: project?.id ?? undefined,
+      github_repo: repoRef(project),
       description: cursorPrompt,
       url: magicUrl || undefined,
+      status: 'started',
     }).catch(() => {})
   }
 
@@ -148,18 +153,18 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
 
           {/* Step 0: Project info (preselect) or Select Projects */}
           {step === 0 && preselect && (() => {
-            const p = projects.find((p) => p.id === preselect)
+            const p = projects.find((p) => repoRef(p) === preselect)
             if (!p) return null
             return (
               <div className="flex flex-col gap-4">
                 <p className="text-body-sm text-graphite">You're contributing to this project.</p>
                 <div className="border border-cool-gray/40 rounded p-5 bg-factory-light-gray">
-                  <p className="text-body font-mono text-factory-black mb-1">{extractRepo(p.url)}</p>
+                  <p className="text-body font-mono text-factory-black mb-1">{repoRef(p)}</p>
                   <a href={p.url} target="_blank" rel="noreferrer"
                     className="text-caption text-ash-gray hover:text-factory-black transition-colors font-mono mb-3 block">
                     {p.url}
                   </a>
-                  <p className="text-body-sm text-graphite leading-relaxed">{p.description}</p>
+                  <p className="text-body-sm text-graphite leading-relaxed">{p.description || 'GitHub repository'}</p>
                 </div>
               </div>
             )
@@ -197,11 +202,12 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
                 ) : null}
                 {filteredProjects.map((project) => {
                   const rec = isRecommended(project)
-                  const active = selected.includes(project.id)
+                  const repo = repoRef(project)
+                  const active = selected.includes(repo)
                   return (
                     <button
-                      key={project.id}
-                      onClick={() => toggleProject(project.id)}
+                      key={repo}
+                      onClick={() => toggleProject(repo)}
                       className={`w-full text-left rounded border px-4 py-3 transition-colors
                         ${active
                           ? 'bg-factory-black text-faded-silver border-factory-black'
@@ -210,7 +216,7 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-body-sm font-mono">{extractRepo(project.url)}</span>
+                            <span className="text-body-sm font-mono">{repo}</span>
                             {rec && !active && (
                               <span className="text-caption border border-cool-gray/40 rounded px-1.5 py-0.5 text-ash-gray">
                                 Recommended
@@ -218,7 +224,7 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
                             )}
                           </div>
                           <p className={`text-caption line-clamp-1 ${active ? 'text-faded-silver/70' : 'text-graphite'}`}>
-                            {project.description}
+                            {project.description || 'GitHub repository'}
                           </p>
                         </div>
                         <span className={`shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center

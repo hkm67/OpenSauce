@@ -16,7 +16,7 @@ export default function Navbar() {
 
         {/* Nav links */}
         <div className="hidden md:flex items-center flex-1">
-          <Link to="/projects" className="nav-link">Projects</Link>
+          <Link to="/dashboard/marketplace" className="nav-link">GitHub Repos</Link>
           <a href="/#how-it-works" className="nav-link">How It Works</a>
           <a href="/#leaderboard" className="nav-link">Leaderboard</a>
           <Link to="/docs" className="nav-link">Docs</Link>

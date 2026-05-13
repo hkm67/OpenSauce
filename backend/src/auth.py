@@ -4,27 +4,23 @@ from functools import wraps
 import jwt
 from flask import g, jsonify, request
 
+from .cache import cache_get, cache_set
 from .config import AUTH_COOKIE_NAME, SECRET_KEY, TOKEN_EXPIRES_SECONDS
 from .db import get_connection, row_to_dict
 
 
 def create_temporary_achievement_token(
-    user_id, projects, assigned_issue=None, expires_seconds=3600
+    user_id, github_repos, assigned_issue=None, expires_seconds=3600
 ):
     now = datetime.now(timezone.utc)
-    token_projects = [
-        {
-            "id": project["id"],
-            "url": project["url"],
-            "description": project["description"],
-        }
-        for project in projects
+    token_repos = [
+        repo["github_repo"] if isinstance(repo, dict) else str(repo)
+        for repo in github_repos
     ]
     payload = {
         "sub": str(user_id),
         "scope": "achievement",
-        "projects": token_projects,
-        "project_ids": [project["id"] for project in token_projects],
+        "github_repos": token_repos,
         "assigned_issue": assigned_issue,
         "iat": now,
         "exp": now + timedelta(seconds=expires_seconds),
@@ -62,12 +58,17 @@ def _get_bearer_token():
 
 
 def _load_user(user_id):
+    cache_key = ("user", str(user_id))
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     with get_connection() as connection:
         user = connection.execute(
             "SELECT id, name, username FROM profiles WHERE id = ?",
             (user_id,),
         ).fetchone()
-    return row_to_dict(user)
+    return cache_set(cache_key, row_to_dict(user))
 
 
 def _decode_user_payload(token):

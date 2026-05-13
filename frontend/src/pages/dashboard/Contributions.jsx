@@ -8,6 +8,7 @@ import { getLevel } from '../../config/badges'
 const MEDALS = ['🥇', '🥈', '🥉']
 
 function extractRepo(url) {
+  if (url && !url.includes('github.com/') && url.includes('/')) return url
   const m = url && url.match(/github\.com\/(.+)/)
   return m ? m[1].replace(/\/$/, '') : url
 }
@@ -191,6 +192,12 @@ export default function Contributions() {
                             {extractRepo(plan.url) || plan.url}
                           </a>
                         )}
+                        {!plan.url && plan.github_repo && (
+                          <a href={`https://github.com/${plan.github_repo}`} target="_blank" rel="noreferrer"
+                            className="text-caption text-code-orange hover:underline font-mono mt-0.5 block truncate">
+                            {plan.github_repo}
+                          </a>
+                        )}
                       </div>
                       <span className="text-caption text-ash-gray shrink-0">{timeAgo(plan.created_at)}</span>
                     </div>
@@ -267,14 +274,14 @@ export default function Contributions() {
                 <table className="w-full bg-faded-silver">
                   <tbody className="divide-y divide-cool-gray/30">
                     {topRepos.map((repo, i) => (
-                      <tr key={repo.project_id} className="hover:bg-factory-light-gray/50 transition-colors">
+                      <tr key={repo.github_repo} className="hover:bg-factory-light-gray/50 transition-colors">
                         <td className="px-3 py-2 text-center w-7">
                           {i < 3
                             ? <span className="text-sm">{MEDALS[i]}</span>
                             : <span className="text-caption text-ash-gray font-mono">#{i+1}</span>}
                         </td>
                         <td className="px-2 py-2 text-caption font-mono text-factory-black truncate max-w-[120px]">
-                          {extractRepo(repo.project_url)}
+                          {repo.github_repo || extractRepo(repo.github_repo_url)}
                         </td>
                         <td className="px-3 py-2 text-caption font-mono text-factory-black text-right">{repo.contributions}</td>
                       </tr>

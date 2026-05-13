@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import ProjectCard from '../components/ProjectCard'
-import { getProjects } from '../api/projects'
+import { searchGithubRepos } from '../api/github'
 
 const LEADERBOARD = [
   { rank: 1, name: '@devhero42',      tokens: '2.4M', projects: 18 },
@@ -25,8 +25,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    getProjects()
-      .then((r) => setProjects(r.data.projects || []))
+    searchGithubRepos('open source good first issue', 6)
+      .then((r) => setProjects(r.data.repositories || []))
       .catch(() => setProjects([]))
       .finally(() => setLoading(false))
   }, [])
@@ -52,8 +52,8 @@ export default function Home() {
               <Link to="/signup" className="btn-primary px-4 py-2">
                 Start Volunteer
               </Link>
-              <Link to="/projects" className="btn-outline px-4 py-2">
-                Browse projects
+              <Link to="/dashboard/marketplace" className="btn-outline px-4 py-2">
+                Browse GitHub repos
               </Link>
             </div>
           </div>
@@ -74,7 +74,7 @@ export default function Home() {
         <div className="max-w-content mx-auto px-6 py-12 grid grid-cols-2 sm:grid-cols-4 gap-8">
           {[
             { value: '4.2M',  label: 'Tokens donated' },
-            { value: '120+',  label: 'Open source projects' },
+            { value: '120+',  label: 'Open source repos' },
             { value: '340',   label: 'Active contributors' },
             { value: '1,800', label: 'PRs assisted' },
           ].map((s) => (
@@ -96,7 +96,7 @@ export default function Home() {
                 Four steps from idle to impact.
               </h2>
               <p className="text-body text-graphite max-w-sm">
-                Start volunteering in minutes. No complex setup — just pick a project and let your agent do the rest.
+                Start volunteering in minutes. No complex setup — just pick a GitHub repo and let your agent do the rest.
               </p>
             </div>
 
@@ -117,17 +117,17 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Browse Projects ───────────────────────────────── */}
+      {/* ── Browse Repositories ───────────────────────────── */}
       <section id="projects" className="border-b border-cool-gray/40">
         <div className="max-w-content mx-auto px-6 py-20">
           <div className="flex items-end justify-between mb-10">
             <div>
               <p className="text-body-sm text-ash-gray mb-2">Marketplace</p>
               <h2 className="text-heading-lg font-normal text-factory-black" style={{ letterSpacing: '-2.3px' }}>
-                Browse projects.
+                Browse GitHub repos.
               </h2>
             </div>
-            <Link to="/projects" className="btn-ghost text-body-sm">
+            <Link to="/dashboard/marketplace" className="btn-ghost text-body-sm">
               View all →
             </Link>
           </div>
@@ -140,13 +140,13 @@ export default function Home() {
             </div>
           ) : projects.length === 0 ? (
             <div className="card py-16 text-center">
-              <p className="text-body text-graphite mb-4">No projects yet.</p>
-              <Link to="/signup" className="btn-primary">Add first project</Link>
+              <p className="text-body text-graphite mb-4">No repositories found.</p>
+              <Link to="/signup" className="btn-primary">Start volunteering</Link>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {projects.slice(0, 6).map((p) => (
-                <ProjectCard key={p.id} project={p} />
+                <ProjectCard key={p.github_repo} project={p} />
               ))}
             </div>
           )}
@@ -173,7 +173,7 @@ export default function Home() {
                   <div key={row.rank} className="flex items-center gap-4 py-4 border-b border-cool-gray/30 hover:bg-faded-silver transition-colors">
                     <span className="font-mono text-caption text-ash-gray w-6 shrink-0">{String(row.rank).padStart(2, '0')}</span>
                     <span className="text-body text-factory-black flex-1">{row.name}</span>
-                    <span className="text-body-sm text-graphite hidden sm:block">{row.projects} projects</span>
+                    <span className="text-body-sm text-graphite hidden sm:block">{row.projects} repos</span>
                     <span className="font-mono text-body-sm text-code-orange">{row.tokens}</span>
                   </div>
                 ))}

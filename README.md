@@ -39,16 +39,58 @@ CORS_ALLOWED_ORIGIN=https://opensauce.itdogtics.com
 
 ## Run Locally With Docker
 
-Docker Compose now uses Supabase as the database, so it needs a filled root `.env` before the API can boot:
+Docker Compose uses a local Postgres container by default, so local full-stack testing does not touch the cloud Supabase database:
 
 ```bash
 cp .env.example .env
-# Fill DB_URL_TEMPLATE, DB_PASSWORD, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SECRET_KEY
 docker compose up --build
 ```
 
-Paste Supabase's **pooler** Postgres URL template into `DB_URL_TEMPLATE` with `[YOUR-PASSWORD]` still in place, then put the raw password in `DB_PASSWORD`. The backend URL-encodes the password before connecting, so special characters are fine. Do not use the Direct connection URL (`db.<project-ref>.supabase.co`) for Docker/local unless your network supports IPv6 or you enabled Supabase's IPv4 add-on.
+You can also run the example file directly without copying it:
+
+```bash
+docker compose --env-file .env.example up --build
+```
+
+The default root `.env.example` points `DB_URL_TEMPLATE` at the Compose `db` service and enables `LOCAL_AUTH_ENABLED=true`, so `POST /user` and `POST /login` work against local tables. The Compose Postgres container uses the matching local credentials from that URL: database/user/password are all `opensauce`. To test against Supabase instead, use a separate override compose file or run the backend outside this local Compose stack with the Supabase pooler `DB_URL_TEMPLATE`, `DB_PASSWORD`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `LOCAL_AUTH_ENABLED=false`.
 
 Use `http://localhost:3000` for the app and `http://localhost:8000/health` for the API. For Docker/local, keep `VITE_API_BASE_URL=http://localhost:8000` so browser redirects for GitHub OAuth stay on the backend origin.
+
+Useful local checks:
+
+```bash
+cd backend
+python3 -m pytest -q
+
+cd ../frontend
+npm run build
+```
+
+## Agent Workflow
+
+When an agent works on this repository, prefer this flow:
+
+1. Run locally with Docker Compose:
+
+   ```bash
+   docker compose --env-file .env.example up --build
+   ```
+
+2. Validate the backend and frontend before proposing a change:
+
+   ```bash
+   cd backend && python3 -m pytest -q
+   cd ../frontend && npm run build
+   ```
+
+3. Commit the change on a branch and open a GitHub pull request / merge request.
+
+4. Let CI handle verification and deployment. The workflow in `.github/workflows/deploy.yml` runs backend unit tests, frontend build, and backend Docker build on branch pushes and pull requests.
+
+5. Production deployment is handled by CI:
+   - pushes to `main` deploy production automatically after checks pass;
+   - manual branch promotion is available from GitHub Actions via `workflow_dispatch` with `deploy_frontend` and/or `deploy_backend` set to `true`.
+
+Agents should not point local Docker at production Supabase unless explicitly asked. The default `.env.example` is intentionally safe for local full-stack testing.
 
 See `backend/README.md` for backend runtime details.
