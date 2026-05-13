@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { getSkills, fetchSkillPrompt, addAchievement } from '../../api/achievements'
+import { getAchievements, fetchSkillPrompt, addAchievement } from '../../api/achievements'
 
 const STEPS_DEFAULT  = ['Select Projects', 'Your Prompt']
 const STEPS_PRESELECT = ['Project', 'Your Prompt']
@@ -28,7 +28,7 @@ function repoRef(project) {
 export default function ContributionFlow({ projects, onClose, preselect = null }) {
   const { user } = useAuth()
   const [step, setStep] = useState(0)
-  const [skills, setSkills] = useState([])
+  const [achievements, setAchievements] = useState([])
   const [selected, setSelected] = useState(preselect ? [preselect] : [])
   const [category, setCategory] = useState('All')
   const [copied, setCopied] = useState(false)
@@ -40,7 +40,7 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
   const [assignedIssue, setAssignedIssue] = useState(null)
 
   useEffect(() => {
-    getSkills().then((r) => setSkills(r.data.skills || [])).catch(() => {})
+    getAchievements().then((r) => setAchievements(r.data.achievements || [])).catch(() => {})
   }, [])
 
   // Call /skill when entering step 1
@@ -62,7 +62,7 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
       .finally(() => setSkillLoading(false))
   }, [step, selected, user?.id])
 
-  const skillKeywords = skills.flatMap((s) =>
+  const skillKeywords = achievements.flatMap((s) =>
     (s.skill || s.name || '').toLowerCase().split(/[\s,/]+/)
   )
   const isRecommended = (project) => {
@@ -113,7 +113,7 @@ export default function ContributionFlow({ projects, onClose, preselect = null }
       name: 'Contribution Plan Started',
       github_repo: repoRef(project),
       description: cursorPrompt,
-      url: magicUrl || undefined,
+      url: magicUrl || assignedIssue?.url || undefined,
       status: 'started',
     }).catch(() => {})
   }

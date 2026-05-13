@@ -26,7 +26,7 @@ VITE_API_BASE_URL=https://api.opensauce.itdogtics.com
 PUBLIC_BASE_URL=https://api.opensauce.itdogtics.com
 GITHUB_REDIRECT_URI=https://api.opensauce.itdogtics.com/oauth/github/callback
 OAUTH_SUCCESS_REDIRECT=https://opensauce.itdogtics.com/oauth/callback
-CORS_ALLOWED_ORIGIN=https://opensauce.itdogtics.com
+CORS_ALLOWED_ORIGINS=https://opensauce.itdogtics.com
 ```
 
 ## Setup Order
@@ -93,4 +93,4 @@ When an agent works on this repository, prefer this flow:
 
 Agents should not point local Docker at production Supabase unless explicitly asked. The default `.env.example` is intentionally safe for local full-stack testing.
 
-See `backend/README.md` for backend runtime details.
+See `backend/README.md` for backend runtime details and `backend/API.md` for the API endpoint reference.

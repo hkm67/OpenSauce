@@ -16,6 +16,7 @@ from ..github import (
     parse_github_pull_request_url,
     search_github_repositories,
 )
+from ..rate_limit import rate_limit
 from ..responses import error, require_fields
 
 
@@ -99,6 +100,8 @@ def _timestamps_for_status(status):
 
 
 @achievements_bp.get("/github/search")
+@require_auth
+@rate_limit("expensive")
 def search_github():
     limit, limit_error = _parse_int_query("limit", default=20, minimum=1, maximum=50)
     if limit_error:
@@ -110,6 +113,8 @@ def search_github():
 
 
 @achievements_bp.get("/github/repos/<path:github_repo>")
+@require_auth
+@rate_limit("expensive")
 def get_github_repo(github_repo):
     repo = fetch_github_repository(github_repo)
     if repo is None:
@@ -119,6 +124,7 @@ def get_github_repo(github_repo):
 
 @achievements_bp.get("/achievements")
 @require_auth
+@rate_limit("api")
 def list_achievements():
     cache_key = (
         "achievements",
@@ -240,17 +246,6 @@ def list_achievements():
     }
     cache_set(cache_key, payload)
     return jsonify(payload)
-
-
-@achievements_bp.get("/skills")
-@require_auth
-def list_skills():
-    response = list_achievements()
-    if isinstance(response, tuple):
-        return response
-
-    payload = response.get_json()
-    return jsonify({"skills": payload["achievements"], "pagination": payload["pagination"]})
 
 
 def _parse_github_repos(data):
@@ -503,6 +498,7 @@ def _build_skill_response_payload(data):
 
 
 @achievements_bp.route("/skill", methods=["GET", "POST"])
+@rate_limit("expensive")
 def get_skill_prompt():
     if request.method == "GET":
         data = _skill_request_data_from_args()
@@ -516,6 +512,7 @@ def get_skill_prompt():
 
 
 @achievements_bp.get("/skill.md")
+@rate_limit("expensive")
 def get_skill_markdown():
     payload, payload_error = _build_skill_response_payload(_skill_request_data_from_args())
     if payload_error:
@@ -529,6 +526,8 @@ def get_skill_markdown():
 
 @achievements_bp.get("/achievement/dashboard")
 @achievements_bp.get("/achievements/dashboard")
+@require_auth
+@rate_limit("api")
 def get_achievement_dashboard():
     top_n = _parse_top_n()
     if top_n is None:
@@ -555,6 +554,7 @@ def get_achievement_dashboard():
 
 @achievements_bp.post("/achieve")
 @require_achievement_auth
+@rate_limit("api")
 def add_achievement():
     data = request.get_json(silent=True) or {}
     missing = require_fields(data, ["name"])
@@ -666,6 +666,7 @@ def add_achievement():
 
 @achievements_bp.post("/achievements/<int:achievement_id>/sync")
 @require_auth
+@rate_limit("expensive")
 def sync_achievement(achievement_id):
     with transaction() as connection:
         achievement = connection.execute(

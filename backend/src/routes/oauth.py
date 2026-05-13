@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, redirect, request, session
 
 from ..auth import create_token
 from ..config import GITHUB_REDIRECT_URI, OAUTH_SUCCESS_REDIRECT, SUPABASE_URL
+from ..rate_limit import rate_limit
 from ..responses import error
 from .users import supabase_auth_request, upsert_profile
 
@@ -42,6 +43,7 @@ def _pkce_challenge(verifier):
 
 
 @oauth_bp.get("/oauth/github")
+@rate_limit("auth")
 def github_authorize():
     if not SUPABASE_URL:
         return error("Supabase is not configured.", 503)
@@ -60,6 +62,7 @@ def github_authorize():
 
 
 @oauth_bp.get("/oauth/github/callback")
+@rate_limit("auth")
 def github_callback():
     code = request.args.get("code")
     code_verifier = session.pop("oauth_code_verifier", None)
@@ -99,5 +102,6 @@ def github_callback():
 
 
 @oauth_bp.post("/logout")
+@rate_limit("api")
 def logout():
     return jsonify({"logged_out": True})

@@ -49,8 +49,28 @@ OAUTH_SUCCESS_REDIRECT = os.getenv(
 )
 
 AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "opensauce_token")
-# Frontend origin allowed to call the API with browser credentials.
-CORS_ALLOWED_ORIGIN = os.getenv("CORS_ALLOWED_ORIGIN", "http://localhost:3000")
+
+
+def _cors_allowed_origins():
+    raw_origins = os.getenv("CORS_ALLOWED_ORIGINS")
+    if raw_origins is None:
+        raw_origins = os.getenv("CORS_ALLOWED_ORIGIN", "http://localhost:3000,http://127.0.0.1:3000")
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+
+    # Keep local development forgiving even when an older .env only sets the
+    # singular localhost origin.
+    local_pairs = {
+        "http://localhost:3000": "http://127.0.0.1:3000",
+        "http://127.0.0.1:3000": "http://localhost:3000",
+    }
+    for origin, paired_origin in local_pairs.items():
+        if origin in origins and paired_origin not in origins:
+            origins.append(paired_origin)
+    return origins
+
+
+# Frontend origins allowed to call the API with browser credentials.
+CORS_ALLOWED_ORIGINS = _cors_allowed_origins()
 # Public-facing base URL of this API (no trailing slash).
 # Set to the deployed domain so generated URLs (magic_url, /achieve in SKILL.md)
 # use the real host instead of the internal container address.
@@ -61,3 +81,10 @@ GITHUB_CACHE_TTL_SECONDS = int(os.getenv("GITHUB_CACHE_TTL_SECONDS", "300"))
 GITHUB_CACHE_MAX_ITEMS = int(os.getenv("GITHUB_CACHE_MAX_ITEMS", "256"))
 APP_CACHE_TTL_SECONDS = int(os.getenv("APP_CACHE_TTL_SECONDS", "60"))
 APP_CACHE_MAX_ITEMS = int(os.getenv("APP_CACHE_MAX_ITEMS", "512"))
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() not in ("0", "false", "no")
+RATE_LIMIT_AUTH_REQUESTS = int(os.getenv("RATE_LIMIT_AUTH_REQUESTS", "10"))
+RATE_LIMIT_AUTH_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_AUTH_WINDOW_SECONDS", "60"))
+RATE_LIMIT_API_REQUESTS = int(os.getenv("RATE_LIMIT_API_REQUESTS", "120"))
+RATE_LIMIT_API_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_API_WINDOW_SECONDS", "60"))
+RATE_LIMIT_EXPENSIVE_REQUESTS = int(os.getenv("RATE_LIMIT_EXPENSIVE_REQUESTS", "30"))
+RATE_LIMIT_EXPENSIVE_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_EXPENSIVE_WINDOW_SECONDS", "60"))

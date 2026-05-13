@@ -73,22 +73,18 @@ def run_target(base_url):
     ok("/")
 
     github_repo = "example/project"
-    status, repos_payload = request(base_url, "GET", "/github/search?q=react&limit=1")
-    assert "repositories" in repos_payload
-    ok(f"/github/search ({len(repos_payload['repositories'])} repository result(s))")
-
-    status, dashboard = request(base_url, "GET", "/achievements/dashboard?top_n=5")
-    assert dashboard.get("top_n") == 5 and "windows" in dashboard
-    ok("/achievements/dashboard")
 
     request(base_url, "GET", "/achievements", expected=(401,))
     ok("/achievements rejects missing token")
 
-    request(base_url, "GET", "/skills", expected=(401,))
-    ok("/skills rejects missing token")
-
     request(base_url, "GET", "/preferences", expected=(401,))
     ok("/preferences rejects missing token")
+
+    request(base_url, "GET", "/github/search?q=react&limit=1", expected=(401,))
+    ok("/github/search rejects missing token")
+
+    request(base_url, "GET", "/achievements/dashboard?top_n=5", expected=(401,))
+    ok("/achievements/dashboard rejects missing token")
 
     request(base_url, "POST", "/activity", {"github_repo": github_repo, "url": "https://github.com/example/project/pull/0"}, expected=(401,))
     ok("/activity rejects missing token")
@@ -108,6 +104,14 @@ def run_target(base_url):
     assert current["authenticated"] is True and current["user"]["id"] == user_id
     ok("/user")
 
+    status, repos_payload = request(base_url, "GET", "/github/search?q=react&limit=1", token=token)
+    assert "repositories" in repos_payload
+    ok(f"/github/search ({len(repos_payload['repositories'])} repository result(s))")
+
+    status, dashboard = request(base_url, "GET", "/achievements/dashboard?top_n=5", token=token)
+    assert dashboard.get("top_n") == 5 and "windows" in dashboard
+    ok("/achievements/dashboard")
+
     status, preferences = request(base_url, "GET", "/preferences", token=token)
     assert "preferences" in preferences
     ok("GET /preferences")
@@ -126,10 +130,6 @@ def run_target(base_url):
     status, achievements = request(base_url, "GET", "/achievements?limit=5&offset=0&sort=recent", token=token)
     assert "achievements" in achievements and "pagination" in achievements
     ok("/achievements")
-
-    status, skills = request(base_url, "GET", "/skills?limit=5", token=token)
-    assert "skills" in skills and "pagination" in skills
-    ok("/skills")
 
     activity_url = f"https://github.com/example/project/pull/{int(time.time())}"
     status, activity = request(
