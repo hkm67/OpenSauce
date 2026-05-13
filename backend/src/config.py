@@ -56,3 +56,8 @@ CORS_ALLOWED_ORIGIN = os.getenv("CORS_ALLOWED_ORIGIN", "http://localhost:3000")
 # use the real host instead of the internal container address.
 # Defaults to empty string — the code falls back to Flask's request.url_root.
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+LOCAL_AUTH_ENABLED = os.getenv("LOCAL_AUTH_ENABLED", "").lower() in ("1", "true", "yes")
+GITHUB_CACHE_TTL_SECONDS = int(os.getenv("GITHUB_CACHE_TTL_SECONDS", "300"))
+GITHUB_CACHE_MAX_ITEMS = int(os.getenv("GITHUB_CACHE_MAX_ITEMS", "256"))
+APP_CACHE_TTL_SECONDS = int(os.getenv("APP_CACHE_TTL_SECONDS", "60"))
+APP_CACHE_MAX_ITEMS = int(os.getenv("APP_CACHE_MAX_ITEMS", "512"))

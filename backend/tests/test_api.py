@@ -36,6 +36,7 @@ class FakeDb:
                 "preferences": {"categories": [], "notes": ""},
             }
         }
+        self.auth_users = {}
         self.projects = [
             {"id": 1, "url": "https://github.com/example/project", "description": "Example", "created_at": "2026-01-01T00:00:00Z"},
             {"id": 2, "url": "https://github.com/example/other", "description": "Other", "created_at": "2026-01-02T00:00:00Z"},
@@ -54,6 +55,10 @@ class FakeDb:
                 row = {k: row[k] for k in ("id", "name", "username")}
             return FakeCursor([row] if row else [])
 
+        if "from auth.users where email" in sql:
+            row = next((u for u in self.auth_users.values() if u["email"] == params[0]), None)
+            return FakeCursor([row] if row else [])
+
         if "from profiles where username" in sql:
             row = next((p for p in self.profiles.values() if p["username"] == params[0]), None)
             return FakeCursor([{"id": row["id"]}] if row else [])
@@ -69,6 +74,19 @@ class FakeDb:
             }
             self.profiles[profile["id"]] = profile
             return FakeCursor([{k: profile[k] for k in ("id", "name", "username")}])
+
+        if sql.startswith("insert into auth.users"):
+            if "on conflict" in sql and str(params[0]) in self.auth_users:
+                return FakeCursor(rowcount=0)
+            if len(params) > 1 and any(u["email"] == params[1] for u in self.auth_users.values()):
+                raise psycopg.errors.UniqueViolation("duplicate email")
+            user = {
+                "id": str(params[0]),
+                "email": params[1] if len(params) > 1 else None,
+                "password_hash": params[2] if len(params) > 2 else None,
+            }
+            self.auth_users[user["id"]] = user
+            return FakeCursor(rowcount=1)
 
         if sql.startswith("update profiles set preferences"):
             profile = self.profiles.get(str(params[1]))
@@ -120,9 +138,10 @@ class FakeDb:
             activity = {
                 "id": len(self.activities) + 1,
                 "user_id": params[0],
-                "opensource_id": params[1],
+                "github_repo": params[1],
+                "type": params[2],
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "url": params[2],
+                "url": params[3] if len(params) > 3 else None,
             }
             self.activities.append(activity)
             return FakeCursor(lastrowid=activity["id"])
@@ -135,13 +154,21 @@ class FakeDb:
             achievement = {
                 "id": len(self.achievements) + 1,
                 "user_id": params[0],
-                "project_id": params[1],
+                "github_repo": params[1],
+                "github_repo_url": f"https://github.com/{params[1]}",
                 "name": params[2],
                 "description": params[3],
                 "url": params[4],
-                "issue_url": params[5],
-                "issue_title": params[6],
-                "issue_number": params[7],
+                "github_pr_url": params[5],
+                "github_pr_number": params[6],
+                "issue_url": params[7],
+                "issue_title": params[8],
+                "issue_number": params[9],
+                "status": params[10],
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "submitted_at": datetime.now(timezone.utc).isoformat() if params[10] in {"submitted", "merged", "closed"} else None,
+                "merged_at": datetime.now(timezone.utc).isoformat() if params[10] == "merged" else None,
+                "closed_at": datetime.now(timezone.utc).isoformat() if params[10] == "closed" else None,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
             self.achievements.append(achievement)
@@ -154,30 +181,22 @@ class FakeDb:
         if "select count(*) as total from achievements" in sql:
             return FakeCursor([{"total": len(self._filter_achievements(sql, params))}])
 
-        if "from achievements a left join projects p" in sql:
-            limit = int(params[-2])
-            offset = int(params[-1])
-            rows = self._filter_achievements(sql, params[:-2])
-            if "order by lower(a.name)" in sql:
-                rows = sorted(rows, key=lambda a: (a["name"].lower(), -a["id"]))
-            elif "a.created_at asc" in sql:
-                rows = sorted(rows, key=lambda a: (a["created_at"], a["id"]))
-            else:
-                rows = sorted(rows, key=lambda a: (a["created_at"], a["id"]), reverse=True)
-            return FakeCursor([self._achievement_row(row) for row in rows[offset:offset + limit]])
-
-        if "from achievements a join projects p" in sql:
+        if "group by a.github_repo" in sql:
             rows = []
-            for project in self.projects:
-                count = sum(1 for a in self.achievements if a["project_id"] == project["id"])
+            for repo in sorted({a["github_repo"] for a in self.achievements}):
+                repo_achievements = [a for a in self.achievements if a["github_repo"] == repo]
+                count = len(repo_achievements)
                 if count:
                     rows.append({
-                        "project_id": project["id"],
-                        "project_url": project["url"],
-                        "project_description": project["description"],
+                        "github_repo": repo,
+                        "github_repo_url": f"https://github.com/{repo}",
                         "contributions": count,
+                        "started_count": sum(1 for a in repo_achievements if a["status"] == "started"),
+                        "submitted_count": sum(1 for a in repo_achievements if a["status"] == "submitted"),
+                        "merged_count": sum(1 for a in repo_achievements if a["status"] == "merged"),
+                        "closed_count": sum(1 for a in repo_achievements if a["status"] == "closed"),
                     })
-            return FakeCursor(sorted(rows, key=lambda r: (-r["contributions"], r["project_id"]))[: int(params[1])])
+            return FakeCursor(sorted(rows, key=lambda r: (-r["contributions"], r["github_repo"]))[: int(params[1])])
 
         if "from achievements a join profiles u" in sql:
             rows = []
@@ -189,16 +208,32 @@ class FakeDb:
                         "name": profile["name"],
                         "username": profile["username"],
                         "contributions": count,
+                        "started_count": sum(1 for a in self.achievements if a["user_id"] == profile["id"] and a["status"] == "started"),
+                        "submitted_count": sum(1 for a in self.achievements if a["user_id"] == profile["id"] and a["status"] == "submitted"),
+                        "merged_count": sum(1 for a in self.achievements if a["user_id"] == profile["id"] and a["status"] == "merged"),
+                        "closed_count": sum(1 for a in self.achievements if a["user_id"] == profile["id"] and a["status"] == "closed"),
                     })
             return FakeCursor(sorted(rows, key=lambda r: (-r["contributions"], r["user_id"]))[: int(params[1])])
+
+        if "from achievements a where" in sql:
+            limit = int(params[-2])
+            offset = int(params[-1])
+            rows = self._filter_achievements(sql, params[:-2])
+            if "order by lower(a.name)" in sql:
+                rows = sorted(rows, key=lambda a: (a["name"].lower(), -a["id"]))
+            elif "a.created_at asc" in sql:
+                rows = sorted(rows, key=lambda a: (a["created_at"], a["id"]))
+            else:
+                rows = sorted(rows, key=lambda a: (a["created_at"], a["id"]), reverse=True)
+            return FakeCursor([self._achievement_row(row) for row in rows[offset:offset + limit]])
 
         return FakeCursor([])
 
     def _filter_achievements(self, sql, params):
         rows = [a for a in self.achievements if a["user_id"] == params[0]]
         idx = 1
-        if "a.project_id =" in sql:
-            rows = [a for a in rows if a["project_id"] == int(params[idx])]
+        if "a.github_repo =" in sql:
+            rows = [a for a in rows if a["github_repo"] == params[idx]]
             idx += 1
         if "a.issue_number =" in sql:
             rows = [a for a in rows if a["issue_number"] == int(params[idx])]
@@ -206,17 +241,14 @@ class FakeDb:
         if " ilike " in sql:
             needle = str(params[idx]).strip("%").lower()
             def haystack(row):
-                project = next((p for p in self.projects if p["id"] == row["project_id"]), {})
-                fields = [row.get("name"), row.get("description"), row.get("url"), row.get("issue_title"), row.get("issue_url"), project.get("url")]
+                fields = [row.get("name"), row.get("description"), row.get("url"), row.get("github_repo"), row.get("github_pr_url"), row.get("issue_title"), row.get("issue_url")]
                 return " ".join(str(field or "") for field in fields).lower()
             rows = [a for a in rows if needle in haystack(a)]
         return rows
 
     def _achievement_row(self, row):
-        project = next((p for p in self.projects if p["id"] == row["project_id"]), None)
         out = dict(row)
-        out["project_url"] = project["url"] if project else None
-        out["project_description"] = project["description"] if project else None
+        out["github_repo_url"] = f"https://github.com/{row['github_repo']}"
         return out
 
     def close(self):
@@ -266,6 +298,8 @@ def client(monkeypatch, fake_db):
             sys.modules.pop(module_name)
 
     app_module = importlib.import_module("src.app")
+    importlib.import_module("src.cache").cache_clear()
+    importlib.import_module("src.github").clear_github_cache()
 
     @contextmanager
     def fake_transaction():
@@ -273,11 +307,9 @@ def client(monkeypatch, fake_db):
 
     monkeypatch.setattr("src.auth.get_connection", lambda: fake_db)
     monkeypatch.setattr("src.routes.users.get_connection", lambda: fake_db)
-    monkeypatch.setattr("src.routes.projects.get_connection", lambda: fake_db)
     monkeypatch.setattr("src.routes.activities.get_connection", lambda: fake_db)
     monkeypatch.setattr("src.routes.achievements.get_connection", lambda: fake_db)
     monkeypatch.setattr("src.routes.users.transaction", fake_transaction)
-    monkeypatch.setattr("src.routes.projects.transaction", fake_transaction)
     monkeypatch.setattr("src.routes.activities.transaction", fake_transaction)
     monkeypatch.setattr("src.routes.achievements.transaction", fake_transaction)
     monkeypatch.setattr(
@@ -290,12 +322,11 @@ def client(monkeypatch, fake_db):
     )
     monkeypatch.setattr(
         "src.routes.achievements.fetch_random_open_issue",
-        lambda projects: {
-            "project_id": projects[0]["id"],
-            "project_url": projects[0]["url"],
+        lambda repos: {
+            "github_repo": repos[0],
             "number": 42,
             "title": "Fix flaky contribution flow",
-            "url": f"{projects[0]['url'].rstrip('/')}/issues/42",
+            "url": f"https://github.com/{repos[0]}/issues/42",
         },
     )
 
@@ -324,23 +355,12 @@ def make_temporary_token(user_id=USER_ID, scope="achievement", **extra):
     payload = {
         "sub": user_id,
         "scope": scope,
-        "projects": [{"id": 1, "url": "https://github.com/example/project", "description": "Example"}],
-        "project_ids": [1],
+        "github_repos": ["example/project"],
         "iat": now,
         "exp": now + timedelta(hours=1),
     }
     payload.update(extra)
     return jwt.encode(payload, "backend-secret", algorithm="HS256")
-
-
-def create_project(client, token, url="https://github.com/example/new"):
-    response = client.post(
-        "/project",
-        json={"url": url, "description": "New project"},
-        headers=auth_headers(token),
-    )
-    assert response.status_code == 201
-    return response.get_json()
 
 
 def test_health_endpoint(client):
@@ -391,6 +411,36 @@ def test_database_url_template_requires_password_placeholder(monkeypatch):
 
     with pytest.raises(RuntimeError, match="YOUR-PASSWORD"):
         importlib.import_module("src.config")
+
+
+def test_auth_compatibility_schema_only_runs_for_local_auth(monkeypatch):
+    import src.db as db
+
+    scripts = []
+
+    class FakeConnection:
+        def executescript(self, script):
+            scripts.append(script)
+
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(db, "get_connection", lambda: FakeConnection())
+
+    monkeypatch.setattr(db, "LOCAL_AUTH_ENABLED", False)
+    db.init_db()
+    assert scripts == [db.SCHEMA]
+
+    scripts.clear()
+    monkeypatch.setattr(db, "LOCAL_AUTH_ENABLED", True)
+    db.init_db()
+    assert scripts == [db.LOCAL_AUTH_SCHEMA, db.SCHEMA]
 
 
 def test_legacy_database_url_is_rejected(monkeypatch):
@@ -459,6 +509,34 @@ def test_user_signup_and_login_proxy_supabase_auth(client):
     login = client.post("/login", json={"email": "new@example.com", "password": "secret123"})
     assert login.status_code == 200
     assert login.get_json()["user"]["username"] == "grace"
+
+
+def test_local_auth_signup_and_login(client, monkeypatch):
+    monkeypatch.setattr("src.routes.users.LOCAL_AUTH_ENABLED", True)
+
+    signup = client.post(
+        "/user",
+        json={
+            "name": "Local Tester",
+            "username": "local",
+            "email": "local@example.com",
+            "password": "secret123",
+        },
+    )
+    login = client.post(
+        "/login",
+        json={"email": "local@example.com", "password": "secret123"},
+    )
+    bad_login = client.post(
+        "/login",
+        json={"email": "local@example.com", "password": "wrong"},
+    )
+
+    assert signup.status_code == 201
+    assert signup.get_json()["user"]["username"] == "local"
+    assert login.status_code == 200
+    assert login.get_json()["user"]["username"] == "local"
+    assert bad_login.status_code == 401
 
 
 def test_user_signup_and_login_validate_errors(client, monkeypatch):
@@ -531,6 +609,67 @@ def test_github_oauth_callback_requires_pkce_verifier(client):
     assert response.get_json()["error"] == "OAuth verifier was lost."
 
 
+def test_github_search_supports_pagination(client, monkeypatch):
+    calls = []
+
+    def fake_search(query, limit, page):
+        calls.append((query, limit, page))
+        return {
+            "repositories": [{"github_repo": "example/project"}],
+            "pagination": {
+                "limit": limit,
+                "page": page,
+                "total": 42,
+                "total_pages": 3,
+                "has_next": True,
+                "has_previous": page > 1,
+            },
+        }
+
+    monkeypatch.setattr("src.routes.achievements.search_github_repositories", fake_search)
+
+    response = client.get("/github/search?q=react&limit=15&page=2")
+    invalid_page = client.get("/github/search?q=react&page=0")
+
+    assert response.status_code == 200
+    assert calls == [("react", 15, 2)]
+    assert response.get_json()["pagination"]["page"] == 2
+    assert response.get_json()["repositories"][0]["github_repo"] == "example/project"
+    assert invalid_page.status_code == 400
+
+
+def test_github_search_uses_application_cache(monkeypatch):
+    from src import github
+
+    github.clear_github_cache()
+    calls = []
+
+    def fake_github_json(_url, timeout=8):
+        calls.append(timeout)
+        return {
+            "total_count": 1,
+            "items": [
+                {
+                    "full_name": "example/project",
+                    "html_url": "https://github.com/example/project",
+                    "description": "Example",
+                    "language": "Python",
+                    "stargazers_count": 10,
+                    "forks_count": 2,
+                    "open_issues_count": 3,
+                }
+            ],
+        }
+
+    monkeypatch.setattr("src.github._github_json", fake_github_json)
+
+    first = github.search_github_repositories("example", 10, 1)
+    second = github.search_github_repositories("example", 10, 1)
+
+    assert first == second
+    assert len(calls) == 1
+
+
 def test_preferences_round_trip_and_validation(client):
     token = make_user_token()
     headers = auth_headers(token)
@@ -553,37 +692,10 @@ def test_preferences_round_trip_and_validation(client):
     assert bad_notes.status_code == 400
 
 
-def test_project_crud_endpoints(client):
-    token = make_user_token()
+def test_project_crud_endpoints_are_removed(client):
+    response = client.get("/projects")
 
-    project = create_project(client, token)
-    assert project["url"] == "https://github.com/example/new"
-
-    listed = client.get("/projects")
-    assert listed.status_code == 200
-    assert listed.get_json()["projects"][0]["url"] == project["url"]
-
-    duplicate = client.post(
-        "/project",
-        json={"url": project["url"], "description": "Duplicate"},
-        headers=auth_headers(token),
-    )
-    missing = client.post(
-        "/project",
-        json={"url": "https://github.com/example/missing-description"},
-        headers=auth_headers(token),
-    )
-    missing_auth = client.post("/project", json={"url": "x", "description": "x"})
-    missing_delete = client.delete("/project", json={}, headers=auth_headers(token))
-    unknown_delete = client.delete("/project", json={"id": 999}, headers=auth_headers(token))
-    deleted = client.delete("/project", json={"url": project["url"]}, headers=auth_headers(token))
-
-    assert duplicate.status_code == 409
-    assert missing.status_code == 400
-    assert missing_auth.status_code == 401
-    assert missing_delete.status_code == 400
-    assert unknown_delete.status_code == 404
-    assert deleted.status_code == 200
+    assert response.status_code == 404
 
 
 def test_activity_endpoint_records_and_validates_work(client):
@@ -592,24 +704,25 @@ def test_activity_endpoint_records_and_validates_work(client):
 
     response = client.post(
         "/activity",
-        json={"opensource_id": 1, "url": "https://github.com/example/project/pull/1"},
+        json={"github_repo": "example/project", "type": "started", "url": "https://github.com/example/project/pull/1"},
         headers=headers,
     )
-    missing = client.post("/activity", json={"opensource_id": 1}, headers=headers)
-    unknown_project = client.post(
+    missing = client.post("/activity", json={"url": "https://github.com/example/project/pull/1"}, headers=headers)
+    invalid_repo = client.post(
         "/activity",
-        json={"opensource_id": 999, "url": "https://github.com/example/project/pull/2"},
+        json={"github_repo": "not-a-repo", "url": "https://github.com/example/project/pull/2"},
         headers=headers,
     )
 
     assert response.status_code == 201
     assert response.get_json()["activity"]["user_id"] == USER_ID
+    assert response.get_json()["activity"]["github_repo"] == "example/project"
     assert missing.status_code == 400
-    assert unknown_project.status_code == 404
+    assert invalid_repo.status_code == 400
 
 
 def test_skill_endpoint_creates_backend_temporary_achievement_jwt(client):
-    response = client.post("/skill", json={"user_id": USER_ID, "project_ids": [1]})
+    response = client.post("/skill", json={"user_id": USER_ID, "github_repos": ["example/project"]})
 
     assert response.status_code == 200
     payload = response.get_json()
@@ -617,30 +730,27 @@ def test_skill_endpoint_creates_backend_temporary_achievement_jwt(client):
     decoded = jwt.decode(token, "backend-secret", algorithms=["HS256"])
     assert decoded["scope"] == "achievement"
     assert decoded["sub"] == USER_ID
-    assert decoded["assigned_issue"]["project_id"] == 1
+    assert decoded["assigned_issue"]["github_repo"] == "example/project"
 
 
-def test_skill_endpoint_supports_get_markdown_random_and_validation(client, monkeypatch):
-    get_response = client.get(f"/skill?user_id={USER_ID}&project_id=1")
-    markdown = client.get(f"/skill.md?user_id={USER_ID}&project_id=1")
-    random_response = client.post("/skill", json={"user_id": USER_ID})
-    bad_ids = client.post("/skill", json={"user_id": USER_ID, "project_ids": ["abc"]})
-    unknown_user = client.post("/skill", json={"user_id": UNKNOWN_USER_ID})
-    unknown_project = client.post("/skill", json={"user_id": USER_ID, "project_ids": [999]})
+def test_skill_endpoint_supports_get_markdown_and_validation(client, monkeypatch):
+    get_response = client.get(f"/skill?user_id={USER_ID}&github_repo=example/project")
+    markdown = client.get(f"/skill.md?user_id={USER_ID}&github_repo=example/project")
+    missing_repo = client.post("/skill", json={"user_id": USER_ID})
+    bad_repo = client.post("/skill", json={"user_id": USER_ID, "github_repos": ["abc"]})
+    unknown_user = client.post("/skill", json={"user_id": UNKNOWN_USER_ID, "github_repos": ["example/project"]})
 
     monkeypatch.setattr("src.routes.achievements.fetch_random_open_issue", lambda _projects: None)
-    no_issue = client.post("/skill", json={"user_id": USER_ID, "project_ids": [1]})
+    no_issue = client.post("/skill", json={"user_id": USER_ID, "github_repos": ["example/project"]})
 
     assert get_response.status_code == 200
-    assert get_response.get_json()["projects"][0]["id"] == 1
+    assert get_response.get_json()["github_repos"][0] == "example/project"
     assert markdown.status_code == 200
     assert markdown.mimetype == "text/markdown"
     assert "Open Source Volunteer Agent" in markdown.get_data(as_text=True)
-    assert random_response.status_code == 200
-    assert len(random_response.get_json()["projects"]) == 3
-    assert bad_ids.status_code == 400
+    assert missing_repo.status_code == 400
+    assert bad_repo.status_code == 400
     assert unknown_user.status_code == 404
-    assert unknown_project.status_code == 404
     assert no_issue.status_code == 400
 
 
@@ -654,14 +764,15 @@ def test_achieve_accepts_valid_temporary_achievement_jwt(client):
     assert response.status_code == 201
     achievement = response.get_json()["achievement"]
     assert achievement["user_id"] == USER_ID
-    assert achievement["project_id"] == 1
+    assert achievement["github_repo"] == "example/project"
     assert achievement["name"] == "Contribution"
+    assert achievement["status"] == "submitted"
 
 
 def test_achieve_accepts_normal_backend_user_token(client):
     response = client.post(
         "/achieve",
-        json={"name": "User contribution", "project_id": 1},
+        json={"name": "User contribution", "github_repo": "example/project"},
         headers=auth_headers(make_user_token()),
     )
 
@@ -676,7 +787,7 @@ def test_achievements_and_skills_list_with_filters_sorting_and_validation(client
         "/achieve",
         json={
             "name": "Second contribution",
-            "project_id": 2,
+            "github_repo": "example/other",
             "issue_url": "https://github.com/example/other/issues/2",
             "issue_title": "Second issue",
             "issue_number": 2,
@@ -688,7 +799,7 @@ def test_achievements_and_skills_list_with_filters_sorting_and_validation(client
         "/achieve",
         json={
             "name": "First contribution",
-            "project_id": 1,
+            "github_repo": "example/project",
             "issue_url": "https://github.com/example/project/issues/1",
             "issue_title": "First issue",
             "issue_number": 1,
@@ -698,7 +809,7 @@ def test_achievements_and_skills_list_with_filters_sorting_and_validation(client
     )
 
     listed = client.get("/achievements?limit=1&offset=0", headers=headers)
-    by_project = client.get("/achievements?project_id=1", headers=headers)
+    by_repo = client.get("/achievements?github_repo=example/project", headers=headers)
     by_issue = client.get("/achievements?issue_number=2", headers=headers)
     by_search = client.get("/achievements?q=Second", headers=headers)
     oldest = client.get("/achievements?sort=oldest", headers=headers)
@@ -707,12 +818,12 @@ def test_achievements_and_skills_list_with_filters_sorting_and_validation(client
 
     invalid_limit = client.get("/achievements?limit=0", headers=headers)
     invalid_offset = client.get("/achievements?offset=-1", headers=headers)
-    invalid_project = client.get("/achievements?project_id=abc", headers=headers)
+    invalid_status = client.get("/achievements?status=unknown", headers=headers)
     invalid_sort = client.get("/achievements?sort=unknown", headers=headers)
 
     assert listed.status_code == 200
     assert listed.get_json()["pagination"]["has_more"] is True
-    assert by_project.get_json()["achievements"][0]["project_id"] == 1
+    assert by_repo.get_json()["achievements"][0]["github_repo"] == "example/project"
     assert by_issue.get_json()["achievements"][0]["issue_number"] == 2
     assert by_search.get_json()["achievements"][0]["name"] == "Second contribution"
     assert oldest.get_json()["achievements"][0]["name"] == "Second contribution"
@@ -721,15 +832,15 @@ def test_achievements_and_skills_list_with_filters_sorting_and_validation(client
     assert len(skills.get_json()["skills"]) == 2
     assert invalid_limit.status_code == 400
     assert invalid_offset.status_code == 400
-    assert invalid_project.status_code == 400
+    assert invalid_status.status_code == 400
     assert invalid_sort.status_code == 400
 
 
 def test_achievement_dashboard_and_validation(client):
     token = make_user_token()
     headers = auth_headers(token)
-    client.post("/achieve", json={"name": "One", "project_id": 1}, headers=headers)
-    client.post("/achieve", json={"name": "Two", "project_id": 1}, headers=headers)
+    client.post("/achieve", json={"name": "One", "github_repo": "example/project"}, headers=headers)
+    client.post("/achieve", json={"name": "Two", "github_repo": "example/project"}, headers=headers)
 
     response = client.get("/achievements/dashboard?top_n=1")
     invalid_low = client.get("/achievement/dashboard?top_n=0")
@@ -737,7 +848,7 @@ def test_achievement_dashboard_and_validation(client):
 
     assert response.status_code == 200
     monthly = response.get_json()["windows"]["monthly"]
-    assert monthly["top_repositories"][0]["project_id"] == 1
+    assert monthly["top_repositories"][0]["github_repo"] == "example/project"
     assert monthly["top_users"][0]["user_id"] == USER_ID
     assert invalid_low.status_code == 400
     assert invalid_text.status_code == 400
@@ -748,16 +859,16 @@ def test_achieve_validates_inputs_and_project_scope(client):
     headers = auth_headers(token)
 
     missing_name = client.post("/achieve", json={}, headers=headers)
-    invalid_project = client.post("/achieve", json={"name": "Bad", "project_id": "abc"}, headers=headers)
-    unknown_project = client.post("/achieve", json={"name": "Bad", "project_id": 999}, headers=headers)
+    missing_repo = client.post("/achieve", json={"name": "Bad"}, headers=headers)
+    invalid_repo = client.post("/achieve", json={"name": "Bad", "github_repo": "abc"}, headers=headers)
     invalid_issue = client.post("/achieve", json={"name": "Bad", "issue_number": "abc"}, headers=headers)
 
     multi_project_token = make_temporary_token(
         projects=[
-            {"id": 1, "url": "https://github.com/example/project", "description": "Example"},
-            {"id": 2, "url": "https://github.com/example/other", "description": "Other"},
+            {"github_repo": "example/project"},
+            {"github_repo": "example/other"},
         ],
-        project_ids=[1, 2],
+        github_repos=["example/project", "example/other"],
     )
     missing_project_for_temporary = client.post(
         "/achieve",
@@ -766,17 +877,17 @@ def test_achieve_validates_inputs_and_project_scope(client):
     )
     by_project_url = client.post(
         "/achieve",
-        json={"name": "Good", "project_url": "https://github.com/example/other"},
+        json={"name": "Good", "github_repo": "example/other"},
         headers=auth_headers(multi_project_token),
     )
 
     assert missing_name.status_code == 400
-    assert invalid_project.status_code == 400
-    assert unknown_project.status_code == 404
+    assert missing_repo.status_code == 400
+    assert invalid_repo.status_code == 400
     assert invalid_issue.status_code == 400
     assert missing_project_for_temporary.status_code == 400
     assert by_project_url.status_code == 201
-    assert by_project_url.get_json()["achievement"]["project_id"] == 2
+    assert by_project_url.get_json()["achievement"]["github_repo"] == "example/other"
 
 
 def test_achieve_rejects_bad_temporary_tokens(client):
@@ -787,14 +898,14 @@ def test_achieve_rejects_bad_temporary_tokens(client):
         algorithm="HS256",
     )
     wrong_scope = make_temporary_token(scope="admin")
-    unauthorized_project = make_temporary_token(projects=[{"id": 1}], project_ids=[1])
+    unauthorized_project = make_temporary_token(github_repos=["example/project"])
 
     malformed = client.post("/achieve", json={"name": "Bad"}, headers=auth_headers("bad-token"))
     expired_response = client.post("/achieve", json={"name": "Bad"}, headers=auth_headers(expired))
     wrong_scope_response = client.post("/achieve", json={"name": "Bad"}, headers=auth_headers(wrong_scope))
     unauthorized_response = client.post(
         "/achieve",
-        json={"name": "Bad", "project_id": 2},
+        json={"name": "Bad", "github_repo": "example/other"},
         headers=auth_headers(unauthorized_project),
     )
 
@@ -805,4 +916,4 @@ def test_achieve_rejects_bad_temporary_tokens(client):
     assert wrong_scope_response.status_code == 403
     assert wrong_scope_response.get_json()["error"] == "Token cannot record achievements"
     assert unauthorized_response.status_code == 403
-    assert unauthorized_response.get_json()["error"] == "Temporary token cannot record work for this project"
+    assert unauthorized_response.get_json()["error"] == "Temporary token cannot record work for this repository"

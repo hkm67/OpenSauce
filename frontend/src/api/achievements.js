@@ -4,10 +4,10 @@ export const getSkills = () => client.get('/skills')
 
 export const addAchievement = (data) => client.post('/achieve', data)
 
-export const fetchSkillPrompt = (userId, projectIds) => {
+export const fetchSkillPrompt = (userId, githubRepos) => {
   const params = new URLSearchParams()
   params.set('user_id', userId)
-  projectIds.forEach((id) => params.append('project_id', id))
+  githubRepos.forEach((repo) => params.append('github_repo', repo))
   return client.get('/skill', { params }).then((r) => r.data)
 }
 

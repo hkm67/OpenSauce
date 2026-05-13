@@ -21,6 +21,16 @@ services:
         sync: false
       - key: SUPABASE_PUBLISHABLE_KEY
         sync: false
+      - key: LOCAL_AUTH_ENABLED
+        value: "false"
+      - key: GITHUB_CACHE_TTL_SECONDS
+        value: "300"
+      - key: GITHUB_CACHE_MAX_ITEMS
+        value: "256"
+      - key: APP_CACHE_TTL_SECONDS
+        value: "60"
+      - key: APP_CACHE_MAX_ITEMS
+        value: "512"
       - key: GITHUB_REDIRECT_URI
         value: https://api.opensauce.itdogtics.com/oauth/github/callback
       - key: OAUTH_SUCCESS_REDIRECT

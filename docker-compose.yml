@@ -1,21 +1,45 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: "opensauce"
+      POSTGRES_USER: "opensauce"
+      POSTGRES_PASSWORD: "opensauce"
+    ports:
+      - "5432:5432"
+    volumes:
+      - opensauce_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opensauce -d opensauce"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   api:
     build: ./backend
     ports:
       - "8000:8000"
     environment:
-      SECRET_KEY: "${SECRET_KEY:?Copy .env.example to .env and set SECRET_KEY}"
-      DB_URL_TEMPLATE: "${DB_URL_TEMPLATE:?Copy .env.example to .env and set DB_URL_TEMPLATE from Supabase}"
-      DB_PASSWORD: "${DB_PASSWORD:?Copy .env.example to .env and set DB_PASSWORD from Supabase}"
-      SUPABASE_URL: "${SUPABASE_URL:?Copy .env.example to .env and set SUPABASE_URL}"
-      SUPABASE_PUBLISHABLE_KEY: "${SUPABASE_PUBLISHABLE_KEY:?Copy .env.example to .env and set SUPABASE_PUBLISHABLE_KEY}"
+      SECRET_KEY: "${SECRET_KEY:-local-dev-secret}"
+      DB_URL_TEMPLATE: "${DB_URL_TEMPLATE:-postgresql://opensauce:[YOUR-PASSWORD]@db:5432/opensauce}"
+      DB_PASSWORD: "${DB_PASSWORD:-opensauce}"
+      LOCAL_AUTH_ENABLED: "true"
+      SUPABASE_URL: ""
+      SUPABASE_PUBLISHABLE_KEY: ""
       GITHUB_REDIRECT_URI: "${GITHUB_REDIRECT_URI:-http://localhost:8000/oauth/github/callback}"
       OAUTH_SUCCESS_REDIRECT: "${OAUTH_SUCCESS_REDIRECT:-http://localhost:3000/oauth/callback}"
       TOKEN_EXPIRES_SECONDS: "${TOKEN_EXPIRES_SECONDS:-86400}"
       CORS_ALLOWED_ORIGIN: "${CORS_ALLOWED_ORIGIN:-http://localhost:3000}"
+      GITHUB_CACHE_TTL_SECONDS: "${GITHUB_CACHE_TTL_SECONDS:-300}"
+      GITHUB_CACHE_MAX_ITEMS: "${GITHUB_CACHE_MAX_ITEMS:-256}"
+      APP_CACHE_TTL_SECONDS: "${APP_CACHE_TTL_SECONDS:-60}"
+      APP_CACHE_MAX_ITEMS: "${APP_CACHE_MAX_ITEMS:-512}"
       # Overrides the domain used in generated SKILL.md URLs and magic links.
       # Defaults to the API's own request host when not set.
       PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost:8000}"
+    depends_on:
+      db:
+        condition: service_healthy
 
   frontend:
     build:
@@ -26,3 +50,6 @@ services:
       - "3000:80"
     depends_on:
       - api
+
+volumes:
+  opensauce_postgres_data:

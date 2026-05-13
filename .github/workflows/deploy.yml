@@ -144,6 +144,11 @@ jobs:
           set_render_env "GITHUB_REDIRECT_URI" "$PRODUCTION_BACKEND_URL/oauth/github/callback"
           set_render_env "OAUTH_SUCCESS_REDIRECT" "$PRODUCTION_FRONTEND_URL/oauth/callback"
           set_render_env "CORS_ALLOWED_ORIGIN" "$PRODUCTION_FRONTEND_URL"
+          set_render_env "LOCAL_AUTH_ENABLED" "false"
+          set_render_env "GITHUB_CACHE_TTL_SECONDS" "300"
+          set_render_env "GITHUB_CACHE_MAX_ITEMS" "256"
+          set_render_env "APP_CACHE_TTL_SECONDS" "60"
+          set_render_env "APP_CACHE_MAX_ITEMS" "512"
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}

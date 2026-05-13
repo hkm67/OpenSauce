@@ -45,9 +45,9 @@ status, health = request("GET", "/health")
 assert status == 200 and health == {"status": "ok"}
 print("ok /health")
 
-status, projects = request("GET", "/projects")
-assert status == 200 and projects["projects"]
-print(f"ok /projects ({len(projects['projects'])} project(s))")
+status, repos = request("GET", "/github/search?q=react&limit=1")
+assert status == 200 and "repositories" in repos
+print(f"ok /github/search ({len(repos['repositories'])} repository result(s))")
 
 print("Authenticated smoke checks require an OpenSauce API token:")
 print("  OPENSAUCE_API_TOKEN=... BASE_URL=... ./scripts/smoke-auth.sh")

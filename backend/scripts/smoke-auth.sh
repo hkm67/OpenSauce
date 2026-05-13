@@ -43,12 +43,9 @@ assert status == 200 and current["user"]["id"]
 user_id = current["user"]["id"]
 print("ok /user")
 
-status, projects = request("GET", "/projects")
-assert status == 200 and projects["projects"]
-project_id = projects["projects"][0]["id"]
-print("ok /projects")
+github_repo = "example/project"
 
-status, skill = request("POST", "/skill", {"user_id": user_id, "project_ids": [project_id]})
+status, skill = request("POST", "/skill", {"user_id": user_id, "github_repos": [github_repo]})
 assert status == 200 and skill["temporary_auth"]["oauth_token"]
 print("ok /skill")
 

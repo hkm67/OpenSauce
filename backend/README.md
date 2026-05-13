@@ -1,12 +1,12 @@
 # OpenSauce Backend
 
-Flask API for users, projects, activities, skill prompts, and achievements. The browser only talks to this API. The backend talks to Supabase Auth and Supabase Postgres.
+Flask API for users, GitHub-referenced activities, skill prompts, and achievements. The browser only talks to this API. Production uses Supabase Auth and Supabase Postgres; Docker/local can use local Postgres plus local auth.
 
 ## Local Setup
 
-1. Create a Supabase project.
-2. Run `supabase/migrations/001_initial_schema.sql` in the Supabase SQL Editor.
-3. Copy `backend/.env.example` to `backend/.env` and fill in `DB_URL_TEMPLATE`, `DB_PASSWORD`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY`.
+1. Start a local Postgres instance or create a Supabase project.
+2. Run `supabase/migrations/001_initial_schema.sql` in the database.
+3. Copy `backend/.env.example` to `backend/.env` and fill in the database values. Keep `LOCAL_AUTH_ENABLED=true` for local auth, or set Supabase Auth values and `LOCAL_AUTH_ENABLED=false`.
 4. Start the API:
 
 ```bash
@@ -23,23 +23,27 @@ From the repo root:
 
 ```bash
 cp .env.example .env
-# Fill the Supabase values in .env first.
 docker compose up --build
 ```
 
-Paste Supabase's **pooler** Postgres URL template into `DB_URL_TEMPLATE` with `[YOUR-PASSWORD]` still in place, then put the raw password in `DB_PASSWORD`. The backend URL-encodes the password before connecting, so special characters are fine. Do not use the Direct connection URL (`db.<project-ref>.supabase.co`) for Docker/local unless your network supports IPv6 or you enabled Supabase's IPv4 add-on.
+Docker Compose starts a local `postgres:16-alpine` service. The root `.env.example` points `DB_URL_TEMPLATE` at that local `db` service, keeping local signup/login, achievements, and activities away from cloud Supabase data. To intentionally use Supabase, run the backend outside this local Compose stack or use an override compose file with the Supabase `DB_URL_TEMPLATE`, `DB_PASSWORD`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `LOCAL_AUTH_ENABLED=false`.
 
 The frontend runs at `http://localhost:3000` and proxies `/api/*` to the backend container. The backend runs at `http://localhost:8000`.
 
 ## Environment Variables
 
-- `DB_URL_TEMPLATE`: Supabase pooler Postgres URL template with `[YOUR-PASSWORD]` still in place. Prefer Session pooler for Docker/local backend.
-- `DB_PASSWORD`: Raw Supabase database password. The backend encodes special characters automatically.
-- `SUPABASE_URL`: Supabase project URL.
-- `SUPABASE_PUBLISHABLE_KEY`: Supabase publishable key used server-side to call Supabase Auth signup/login endpoints.
+- `DB_URL_TEMPLATE`: Postgres URL template with `[YOUR-PASSWORD]` still in place. Docker/local uses `postgresql://opensauce:[YOUR-PASSWORD]@db:5432/opensauce`.
+- `DB_PASSWORD`: Raw database password. The backend encodes special characters automatically.
+- `LOCAL_AUTH_ENABLED`: When true, signup/login use the local `auth.users` compatibility table instead of Supabase Auth.
+- `SUPABASE_URL`: Supabase project URL, required when `LOCAL_AUTH_ENABLED=false`.
+- `SUPABASE_PUBLISHABLE_KEY`: Supabase publishable key, required when `LOCAL_AUTH_ENABLED=false`.
 - `SECRET_KEY`: Backend signing key for normal OpenSauce API tokens and temporary `/achieve` tokens.
 - `PUBLIC_BASE_URL`: Public API URL used in generated `SKILL.md` links.
 - `CORS_ALLOWED_ORIGIN`: Frontend origin allowed to call the API.
+- `GITHUB_CACHE_TTL_SECONDS`: In-memory TTL for GitHub marketplace/repo/issue fetches. Defaults to `300`; set `0` to disable.
+- `GITHUB_CACHE_MAX_ITEMS`: Maximum cached GitHub response entries per API process. Defaults to `256`.
+- `APP_CACHE_TTL_SECONDS`: In-memory TTL for DB-backed read endpoints such as `/user`, `/preferences`, `/achievements`, `/skills`, and `/achievements/dashboard`. Defaults to `60`; set `0` to disable.
+- `APP_CACHE_MAX_ITEMS`: Maximum cached DB response entries per API process. Defaults to `512`.
 
 ## Auth Model
 
@@ -49,7 +53,7 @@ Normal user routes require an OpenSauce API token returned by `POST /user` or `P
 Authorization: Bearer <opensauce-api-token>
 ```
 
-`POST /user` and `POST /login` proxy Supabase Auth from the backend, then return a backend-signed API token to the client. `/skill` still issues a separate backend-signed temporary JWT scoped to achievement submission. `/achieve` accepts either a normal OpenSauce API token or a temporary achievement token. Temporary achievement tokens cannot access user-only routes.
+`POST /user` and `POST /login` use local auth when `LOCAL_AUTH_ENABLED=true`; otherwise they proxy Supabase Auth from the backend. Both modes return a backend-signed API token to the client. `/skill` still issues a separate backend-signed temporary JWT scoped to achievement submission. `/achieve` accepts either a normal OpenSauce API token or a temporary achievement token. Temporary achievement tokens cannot access user-only routes.
 
 GitHub login also stays backend-only. Enable the GitHub provider in Supabase Auth, then add the backend callback URL to Supabase Auth redirect URLs:
 
@@ -78,7 +82,7 @@ Render Free Web Service:
 - Start command: `gunicorn -c gunicorn.conf.py wsgi:app`
 - Health check path: `/health`
 
-Required Render env vars: `DB_URL_TEMPLATE`, `DB_PASSWORD`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SECRET_KEY`, `PUBLIC_BASE_URL`, and `CORS_ALLOWED_ORIGIN`.
+Required Render env vars: `DB_URL_TEMPLATE`, `DB_PASSWORD`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SECRET_KEY`, `PUBLIC_BASE_URL`, `CORS_ALLOWED_ORIGIN`, and `LOCAL_AUTH_ENABLED=false`. Cache env vars are synced by CI with production defaults: `GITHUB_CACHE_TTL_SECONDS=300`, `GITHUB_CACHE_MAX_ITEMS=256`, `APP_CACHE_TTL_SECONDS=60`, and `APP_CACHE_MAX_ITEMS=512`.
 
 Production URL env vars:
 

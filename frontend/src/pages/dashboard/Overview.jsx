@@ -123,8 +123,8 @@ export default function Overview() {
   const totalContributions = Math.max(myContributions, myAchievementsCount)
 
   const projectsContributedTo = useMemo(() => {
-    const ids = new Set(achievements.map((a) => a.project_id).filter(Boolean))
-    return ids.size
+    const repos = new Set(achievements.map((a) => a.github_repo).filter(Boolean))
+    return repos.size
   }, [achievements])
 
   const issuesCompleted = useMemo(
@@ -137,8 +137,9 @@ export default function Overview() {
     const counts = new Map()
     for (const a of achievements) {
       const cat = categorizeProject({
-        url: a.project_url || '',
-        description: a.project_description || '',
+        url: a.github_repo_url || '',
+        github_repo: a.github_repo || '',
+        description: a.description || '',
       })
       counts.set(cat, (counts.get(cat) || 0) + 1)
     }

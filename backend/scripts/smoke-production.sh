@@ -72,12 +72,10 @@ def run_target(base_url):
     status, home = request(base_url, "GET", "/", expected=(200,), timeout=15, parse_json=False)
     ok("/")
 
-    status, projects_payload = request(base_url, "GET", "/projects")
-    projects = projects_payload.get("projects") or []
-    if not projects:
-        raise SmokeFailure("/projects returned no projects")
-    project = projects[0]
-    ok(f"/projects ({len(projects)} project(s))")
+    github_repo = "example/project"
+    status, repos_payload = request(base_url, "GET", "/github/search?q=react&limit=1")
+    assert "repositories" in repos_payload
+    ok(f"/github/search ({len(repos_payload['repositories'])} repository result(s))")
 
     status, dashboard = request(base_url, "GET", "/achievements/dashboard?top_n=5")
     assert dashboard.get("top_n") == 5 and "windows" in dashboard
@@ -92,14 +90,8 @@ def run_target(base_url):
     request(base_url, "GET", "/preferences", expected=(401,))
     ok("/preferences rejects missing token")
 
-    request(base_url, "POST", "/activity", {"opensource_id": project["id"], "url": "https://github.com/example/project/pull/0"}, expected=(401,))
+    request(base_url, "POST", "/activity", {"github_repo": github_repo, "url": "https://github.com/example/project/pull/0"}, expected=(401,))
     ok("/activity rejects missing token")
-
-    request(base_url, "POST", "/project", {"url": "https://github.com/example/smoke", "description": "Smoke"}, expected=(401,))
-    ok("/project rejects missing token")
-
-    request(base_url, "DELETE", "/project", {"id": project["id"]}, expected=(401,))
-    ok("DELETE /project rejects missing token")
 
     request(base_url, "POST", "/logout", expected=(200,))
     ok("/logout")
@@ -144,11 +136,11 @@ def run_target(base_url):
         base_url,
         "POST",
         "/activity",
-        {"opensource_id": project["id"], "url": activity_url},
+        {"github_repo": github_repo, "type": "started", "url": activity_url},
         token=token,
         expected=(201,),
     )
-    assert activity["activity"]["opensource_id"] == project["id"]
+    assert activity["activity"]["github_repo"] == github_repo
     ok("/activity")
 
     achievement_name = f"Production smoke {int(time.time())}"
@@ -157,7 +149,7 @@ def run_target(base_url):
         "POST",
         "/achieve",
         {
-            "project_id": project["id"],
+            "github_repo": github_repo,
             "name": achievement_name,
             "url": activity_url,
             "description": "Production smoke test achievement",
@@ -168,7 +160,7 @@ def run_target(base_url):
     assert achievement["achievement"]["name"] == achievement_name
     ok("/achieve with user token")
 
-    skill_query = urllib.parse.urlencode({"user_id": user_id, "project_id": project["id"]})
+    skill_query = urllib.parse.urlencode({"user_id": user_id, "github_repo": github_repo})
     status, skill_or_error = request(
         base_url,
         "GET",
