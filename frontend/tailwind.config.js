@@ -10,11 +10,12 @@ export default {
         'cool-gray':          '#b8b3b0',
         'graphite':           '#3d3a39',
         'ash-gray':           '#a49d9a',
-        'code-orange':        '#ef6f2e',
+        'code-orange':        '#FF6347',
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+        serif: ['"Playfair Display"', 'Georgia', 'ui-serif', 'serif'],
       },
       fontSize: {
         caption:      ['12px', { lineHeight: '1.5',  letterSpacing: '-0.24px' }],

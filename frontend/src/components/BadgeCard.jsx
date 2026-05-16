@@ -1,10 +1,13 @@
-export default function BadgeCard({ badge, size = 'md' }) {
+export default function BadgeCard({ badge, size = 'md', onClick }) {
   const sm = size === 'sm'
 
   return (
-    <div className={`card relative flex flex-col items-center text-center gap-1.5 transition-opacity
-      ${sm ? 'p-3' : 'p-4'}
-      ${badge.earned ? 'border-b-2 border-code-orange' : 'opacity-40'}`}
+    <div
+      onClick={onClick}
+      className={`card relative flex flex-col items-center text-center gap-1.5 transition-opacity
+        ${sm ? 'p-3' : 'p-4'}
+        ${badge.earned ? 'border-b-2 border-code-orange' : 'opacity-40'}
+        ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
     >
       <div className="relative">
         <img

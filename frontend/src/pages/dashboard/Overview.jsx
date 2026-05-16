@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import DashboardLayout from '../../components/DashboardLayout'
 import BadgeCard from '../../components/BadgeCard'
+import BadgeTiltCard from '../../components/BadgeTiltCard'
 import { useAuth } from '../../contexts/AuthContext'
 import { getDashboard, getAchievements } from '../../api/achievements'
+import { MOCK_ACHIEVEMENTS, MOCK_DASHBOARD } from '../../api/mock'
 import { getBadges } from '../../config/badges'
 import { categorizeProject, CATEGORY_COLORS } from '../../utils/category'
 
@@ -108,7 +110,7 @@ export default function Overview() {
   useEffect(() => {
     getAchievements({ limit: 100, sort: 'recent' })
       .then((r) => setAchievements(r.data.achievements || []))
-      .catch(() => setAchievements([]))
+      .catch(() => setAchievements(MOCK_ACHIEVEMENTS))
     getDashboard(50)
       .then((r) => {
         const entry = r.data.windows.monthly.top_users.find(
@@ -116,7 +118,12 @@ export default function Overview() {
         )
         setMyContributions(entry?.contributions ?? 0)
       })
-      .catch(() => {})
+      .catch(() => {
+        const entry = MOCK_DASHBOARD.windows.monthly.top_users.find(
+          (u) => u.username === user?.username
+        )
+        setMyContributions(entry?.contributions ?? MOCK_DASHBOARD.windows.monthly.top_users[0].contributions)
+      })
   }, [user?.username])
 
   const myAchievementsCount = achievements.length
@@ -157,6 +164,7 @@ export default function Overview() {
 
   const badges = getBadges(totalContributions)
   const earnedCount = badges.filter((b) => b.earned).length
+  const [selectedBadge, setSelectedBadge] = useState(null)
 
   const missionProgress = {
     contributions: totalContributions,
@@ -166,6 +174,7 @@ export default function Overview() {
   }
 
   return (
+    <>
     <DashboardLayout>
       <div className="p-8 space-y-6">
 
@@ -288,7 +297,7 @@ export default function Overview() {
               </div>
               <div className="grid grid-cols-4 gap-2">
                 {badges.map((badge) => (
-                  <BadgeCard key={badge.id} badge={badge} size="sm" />
+                  <BadgeCard key={badge.id} badge={badge} size="sm" onClick={() => setSelectedBadge(badge)} />
                 ))}
               </div>
             </div>
@@ -320,19 +329,13 @@ export default function Overview() {
                 </p>
               </div>
             </div>
-
-            {/* Quick links */}
-            <div className="card">
-              <h2 className="text-body text-factory-black mb-3">Quick actions</h2>
-              <div className="space-y-2">
-                <Link to="/dashboard/marketplace" className="block btn-outline w-full text-center py-2 text-body-sm">Browse projects</Link>
-                <Link to="/dashboard/agents" className="block btn-outline w-full text-center py-2 text-body-sm">Manage agents</Link>
-                <Link to="/dashboard/contributions" className="block btn-outline w-full text-center py-2 text-body-sm">View leaderboard</Link>
-              </div>
-            </div>
           </div>
         </div>
       </div>
     </DashboardLayout>
+    {selectedBadge && (
+      <BadgeTiltCard badge={selectedBadge} contributions={totalContributions} onClose={() => setSelectedBadge(null)} />
+    )}
+    </>
   )
 }

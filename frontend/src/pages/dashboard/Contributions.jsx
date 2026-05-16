@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
 import { getDashboard, getAchievements } from '../../api/achievements'
+import { MOCK_ACHIEVEMENTS, MOCK_DASHBOARD } from '../../api/mock'
 import { getLevel } from '../../config/badges'
 
 const MEDALS = ['🥇', '🥈', '🥉']
@@ -63,12 +64,12 @@ export default function Contributions() {
   useEffect(() => {
     getDashboard(50)
       .then((r) => setData(r.data))
-      .catch(() => setData(null))
+      .catch(() => setData(MOCK_DASHBOARD))
       .finally(() => setLoading(false))
 
     getAchievements()
       .then((r) => setPlans(r.data.achievements || []))
-      .catch(() => setPlans([]))
+      .catch(() => setPlans(MOCK_ACHIEVEMENTS))
       .finally(() => setPlansLoading(false))
   }, [])
 
