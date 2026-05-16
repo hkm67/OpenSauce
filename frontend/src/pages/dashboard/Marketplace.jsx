@@ -71,7 +71,7 @@ export default function Marketplace() {
             onClick={() => setShowFlow(true)}
             className="shrink-0 bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors"
           >
-            Contribution Plan
+            Start Contribution
           </button>
         </div>
 

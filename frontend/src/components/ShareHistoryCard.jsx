@@ -31,9 +31,15 @@ async function captureElement(el) {
   }
 }
 
+async function toFile(canvas, name) {
+  return new Promise((resolve) =>
+    canvas.toBlob((blob) => resolve(new File([blob], `${name}.png`, { type: 'image/png' })))
+  )
+}
+
 const AWARDED_DATE = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
-export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
+export default function ShareHistoryCard({ achievement, totalCount, onClose }) {
   const { user } = useAuth()
   const [tilt, setTilt] = useState({ x: 0, y: 0, rx: 0.5, ry: 0.5 })
   const [hovered, setHovered] = useState(false)
@@ -63,9 +69,9 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
     setCapturing(true)
     try {
       const canvas = await captureElement(cardRef.current)
-      const file = await toFile(canvas, `${badge.name}-badge`)
+      const file = await toFile(canvas, 'contribution')
       if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: `I earned the "${badge.name}" badge!`, text: badge.description })
+        await navigator.share({ files: [file], title: `I completed a contribution on OpenSauce!`, text: achievement.name })
         return
       }
     } catch { /* fall through */ } finally { setCapturing(false) }
@@ -78,22 +84,14 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
     try {
       const canvas = await captureElement(cardRef.current)
       const a = document.createElement('a')
-      a.download = `${badge.name}-badge.png`
+      a.download = 'contribution.png'
       a.href = canvas.toDataURL('image/png')
       a.click()
     } finally { setCapturing(false) }
   }
 
-  async function toFile(canvas, name) {
-    return new Promise((resolve) =>
-      canvas.toBlob((blob) => resolve(new File([blob], `${name}.png`, { type: 'image/png' })))
-    )
-  }
-
   const displayName = user?.name || user?.username || 'Contributor'
-
-  // Map /tomato_N.png → /awardN.jpg
-  const awardImage = badge.image?.replace(/\/tomato_(\d+)\.png$/, '/award$1.jpg') || badge.image
+  const projectName = achievement.github_repo || (achievement.url ? achievement.url.replace(/^https?:\/\/github\.com\//, '') : null)
 
   return (
     <div
@@ -131,42 +129,39 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
           boxShadow: `${shadowX}px ${shadowY}px ${shadowBlur}px rgba(0,0,0,0.7), 0 0 40px rgba(117,228,238,0.2), 0 0 80px rgba(248,95,190,0.12)`,
         }}
       >
-        {/* ── LEFT — Key Visual ── */}
+        {/* LEFT — Contribution count visual */}
         <div
-          className="badge-cert-left relative overflow-hidden rounded-xl"
-          style={{ backgroundColor: '#fff' }}
+          className="badge-cert-left relative overflow-hidden rounded-xl flex flex-col items-center justify-center gap-3"
+          style={{ backgroundColor: '#020202' }}
         >
-          <img
-            src={awardImage}
-            alt={badge.name}
-            crossOrigin="anonymous"
-            className="w-full h-full object-cover"
-            style={badge.earned ? {} : { filter: 'grayscale(1) brightness(0.85)' }}
-          />
-
-          {/* OpenSauce logo watermark bottom-left */}
-          <div className="absolute bottom-3 left-3 flex items-center gap-1.5 bg-white/70 backdrop-blur-sm rounded-full px-2 py-1">
-            <img src="/icon_OpenSauce.jpeg" alt="OpenSauce" className="w-4 h-4 object-contain rounded-full" />
-            <span className="text-[9px] font-mono text-[#3d3a39] tracking-wider">OpenSauce</span>
+          <div className="dot-grid absolute inset-0 opacity-20" />
+          <div className="relative flex flex-col items-center gap-2">
+            <span className="text-6xl font-mono font-normal text-faded-silver" style={{ letterSpacing: '-4px' }}>
+              {totalCount}
+            </span>
+            <span className="text-xs font-mono tracking-[0.25em] uppercase text-ash-gray">
+              Contributions
+            </span>
+            <div className="mt-2 w-8 h-px bg-code-orange" />
+            <span className="text-xs font-mono tracking-widest uppercase text-code-orange">Completed</span>
           </div>
 
-          {!badge.earned && (
-            <div className="absolute inset-0 bg-white/50 flex items-center justify-center">
-              <span className="text-3xl">🔒</span>
-            </div>
-          )}
+          {/* OpenSauce logo watermark */}
+          <div className="absolute bottom-3 left-3 flex items-center gap-1.5 bg-white/10 backdrop-blur-sm rounded-full px-2 py-1">
+            <img src="/icon_OpenSauce.jpeg" alt="OpenSauce" className="w-4 h-4 object-contain rounded-full" />
+            <span className="text-[9px] font-mono text-faded-silver/70 tracking-wider">OpenSauce</span>
+          </div>
         </div>
 
-        {/* ── RIGHT — Certificate Letter ── */}
+        {/* RIGHT — Certificate */}
         <div
           className="badge-cert-right flex flex-col justify-between p-6 rounded-xl"
           style={{ backgroundColor: '#fdf8f0' }}
         >
-          {/* Header */}
           <div>
             <div className="mb-3">
               <p className="text-xs tracking-[0.2em] uppercase text-[#a49d9a] font-mono">
-                OpenSauce ·<br />Certificate of Achievement
+                OpenSauce · Contribution Record
               </p>
               <div className="mt-1 flex items-center gap-2">
                 <div className="h-px flex-1 bg-[#d4cfc9]" />
@@ -175,42 +170,30 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
               </div>
             </div>
 
-            {/* Letter body */}
             <p className="text-base text-[#3d3a39] mb-3">
               Dear <span className="font-serif font-semibold text-lg">{displayName}</span>,
             </p>
             <p className="text-body-sm text-[#6b6460] leading-relaxed mb-3">
-              Thank you for volunteering with OpenSauce.
+              Thank you for volunteering with OpenSauce. You have completed{' '}
+              <span className="font-semibold text-[#3d3a39]">{totalCount} contribution{totalCount !== 1 ? 's' : ''}</span> in total.
             </p>
-            <p className="text-body-sm text-[#6b6460] leading-relaxed mb-4">
-              You've earned the{' '}
-              <span className="font-serif font-semibold text-[#3d3a39]">{badge.name}</span> badge —{' '}
-              <span className="italic">{badge.description}</span>
+            <p className="text-body-sm text-[#6b6460] leading-relaxed mb-1">
+              Your latest contribution:
             </p>
-
-            {/* Progress bar */}
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-xs font-mono text-[#a49d9a] uppercase tracking-wider">Progress</span>
-              <span className="text-xs font-mono text-[#3d3a39]">
-                {Math.min(contributions, badge.threshold)} / {badge.threshold}
-              </span>
-            </div>
-            <div className="h-2 rounded-full overflow-hidden mb-1.5" style={{ backgroundColor: '#e8e2da' }}>
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.min(100, Math.round((contributions / badge.threshold) * 100))}%`,
-                  backgroundColor: badge.earned ? '#FF6347' : '#a49d9a',
-                }}
-              />
-            </div>
+            <p className="font-serif font-semibold text-[#3d3a39] text-base mb-1">{achievement.name}</p>
+            {achievement.description && (
+              <p className="text-body-sm text-[#6b6460] italic leading-relaxed mb-3">{achievement.description}</p>
+            )}
+            {projectName && (
+              <p className="text-xs font-mono text-code-orange tracking-wide">{projectName}</p>
+            )}
           </div>
 
-          {/* Footer — signature */}
+          {/* Footer */}
           <div className="border-t pt-3" style={{ borderColor: '#e8e2da' }}>
             <div className="flex items-end justify-between mt-3">
               <div>
-                <p className="text-xs text-[#a49d9a] font-mono mb-0.5">Awarded on {AWARDED_DATE}</p>
+                <p className="text-xs text-[#a49d9a] font-mono mb-0.5">Recorded on {AWARDED_DATE}</p>
                 <p className="text-base font-semibold text-[#3d3a39] tracking-wide">OpenSauce</p>
                 <div className="mt-1 w-16 h-px" style={{ backgroundColor: '#3d3a39' }} />
               </div>
@@ -219,8 +202,8 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
         </div>
       </div>
 
-      {/* Share buttons below card — only shown when badge is earned */}
-      {badge.earned && <div className="relative z-10 flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+      {/* Share buttons */}
+      <div className="relative z-10 flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={handleLinkedIn}
           disabled={capturing}
@@ -230,7 +213,16 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
           {capturing ? <Loader2 className="w-4 h-4 animate-spin" /> : <LinkedinIcon className="w-4 h-4" />}
           Share on LinkedIn
         </button>
-      </div>}
+        <button
+          onClick={handleInstagram}
+          disabled={capturing}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-50"
+          style={{ background: 'linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)' }}
+        >
+          {capturing ? <Loader2 className="w-4 h-4 animate-spin" /> : <InstagramIcon className="w-4 h-4" />}
+          Share on Instagram
+        </button>
+      </div>
     </div>
   )
 }

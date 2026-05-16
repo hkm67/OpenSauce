@@ -20,8 +20,6 @@ export default function Settings() {
   const tabs = [
     { key: 'profile',       label: 'Profile' },
     { key: 'preferences',   label: 'Preferences' },
-    { key: 'api',           label: 'API Keys' },
-    { key: 'skills',        label: 'Skills' },
     { key: 'security',      label: 'Security' },
     { key: 'integrations',  label: 'Integrations' },
   ]
@@ -237,8 +235,6 @@ export default function Settings() {
             <div className="space-y-3">
               {[
                 { name: 'GitHub',  desc: 'Connect to auto-import your repositories.' },
-                { name: 'Slack',   desc: 'Receive donation notifications in Slack.' },
-                { name: 'Webhook', desc: 'Send events to your own endpoint.' },
               ].map((int) => (
                 <div key={int.name} className="card flex items-center justify-between">
                   <div>

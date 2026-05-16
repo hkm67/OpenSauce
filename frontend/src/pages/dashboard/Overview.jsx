@@ -193,7 +193,7 @@ export default function Overview() {
             state={{ openFlow: true }}
             className="relative shrink-0 bg-code-orange text-faded-silver px-5 py-2.5 text-body-sm rounded hover:bg-code-orange/90 transition-colors whitespace-nowrap"
           >
-            Start Contributing →
+            Start Contribution
           </Link>
         </div>
 
@@ -292,7 +292,7 @@ export default function Overview() {
             {/* Badges */}
             <div className="card">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-body text-factory-black">Skills & Badges</h2>
+                <h2 className="text-body text-factory-black">Badges</h2>
                 <span className="text-caption text-ash-gray font-mono">{earnedCount} / {badges.length} earned</span>
               </div>
               <div className="grid grid-cols-4 gap-2">

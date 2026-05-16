@@ -2,9 +2,13 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
+import BadgeCard from '../../components/BadgeCard'
+import BadgeTiltCard from '../../components/BadgeTiltCard'
+import ShareProfileCard from '../../components/ShareProfileCard'
+import { Share2 } from 'lucide-react'
 import { getDashboard, getAchievements } from '../../api/achievements'
 import { MOCK_ACHIEVEMENTS, MOCK_DASHBOARD } from '../../api/mock'
-import { getLevel } from '../../config/badges'
+import { getLevel, getBadges } from '../../config/badges'
 
 const MEDALS = ['🥇', '🥈', '🥉']
 
@@ -59,7 +63,7 @@ export default function Contributions() {
   const [loading, setLoading] = useState(true)
   const [plansLoading, setPlansLoading] = useState(true)
   const [window, setWindow] = useState('monthly')
-  const [planTab, setPlanTab] = useState('plan')
+  const [planTab, setPlanTab] = useState('history')
 
   useEffect(() => {
     getDashboard(50)
@@ -86,10 +90,17 @@ export default function Contributions() {
   const { current: level, next: nextLevel, progressPct } = getLevel(myEntry?.contributions ?? 0)
   const windowLabel = WINDOW_LABELS[window].toLowerCase()
 
+  const totalContributions = myEntry?.contributions ?? 0
+  const badges = getBadges(totalContributions)
+  const earnedCount = badges.filter((b) => b.earned).length
+  const [selectedBadge, setSelectedBadge] = useState(null)
+  const [shareProfileOpen, setShareProfileOpen] = useState(false)
+
   const podiumUsers = [topUsers[1], topUsers[0], topUsers[2]]
   const tableUsers = topUsers.slice(3)
 
   return (
+    <>
     <DashboardLayout>
       <div className="p-8">
         <div className="flex items-start justify-between mb-6">
@@ -99,23 +110,31 @@ export default function Contributions() {
           </div>
           <Link to="/dashboard/marketplace" state={{ openFlow: true }}
             className="bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors">
-            New Plan
+            Start Contribution
           </Link>
         </div>
 
         {/* Rank hero */}
         {myEntry && (
           <div className="card mb-5 flex flex-col gap-3">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{myRankIndex === 0 ? '🥇' : level.icon}</span>
-              <div>
-                <p className="text-heading font-normal text-factory-black">
-                  {myRankIndex === 0 ? "You're leading the community!" : `You're ranked #${myRankIndex + 1}`}
-                </p>
-                <p className="text-body-sm text-graphite">
-                  {level.name} · {myEntry.contributions} contribution{myEntry.contributions !== 1 ? 's' : ''} {windowLabel}
-                </p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div>
+                  <p className="text-heading font-normal text-factory-black">
+                    {myRankIndex === 0 ? "You're leading the community!" : `You're ranked #${myRankIndex + 1}`}
+                  </p>
+                  <p className="text-body-sm text-graphite">
+                    {level.name} · {myEntry.contributions} contribution{myEntry.contributions !== 1 ? 's' : ''} {windowLabel}
+                  </p>
+                </div>
               </div>
+              <button
+                onClick={() => setShareProfileOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded border border-cool-gray/40 text-body-sm text-graphite hover:border-graphite hover:text-factory-black transition-colors shrink-0"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                Share Contribution Status
+              </button>
             </div>
             <div className="flex flex-col gap-1">
               <XpBar progressPct={progressPct} />
@@ -129,12 +148,12 @@ export default function Contributions() {
         {/* Two-column layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-          {/* LEFT — Contribution plan list */}
-          <div className="lg:col-span-2">
+          {/* LEFT — Contribution plan list + Badges */}
+          <div className="lg:col-span-2 space-y-5">
             <div className="border border-cool-gray/40 rounded overflow-hidden">
               <div className="px-4 py-3 border-b border-cool-gray/40 bg-faded-silver flex items-center justify-between">
                 <div className="flex gap-1">
-                  {[['plan', 'Plans', activePlans.length], ['history', 'History', history.length]].map(([tab, label, count]) => (
+                  {[['history', 'History', history.length], ['plan', 'Ongoing', activePlans.length]].map(([tab, label, count]) => (
                     <button
                       key={tab}
                       onClick={() => setPlanTab(tab)}
@@ -205,6 +224,19 @@ export default function Contributions() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Badges */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-body text-factory-black">Badges</h2>
+                <span className="text-caption text-ash-gray font-mono">{earnedCount} / {badges.length} earned</span>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {badges.map((badge) => (
+                  <BadgeCard key={badge.id} badge={badge} size="sm" onClick={() => setSelectedBadge(badge)} />
+                ))}
+              </div>
             </div>
           </div>
 
@@ -295,5 +327,18 @@ export default function Contributions() {
         </div>
       </div>
     </DashboardLayout>
+    {selectedBadge && (
+      <BadgeTiltCard badge={selectedBadge} contributions={totalContributions} onClose={() => setSelectedBadge(null)} />
+    )}
+    {shareProfileOpen && (
+      <ShareProfileCard
+        level={level}
+        totalContributions={totalContributions}
+        rankIndex={myRankIndex}
+        history={history}
+        onClose={() => setShareProfileOpen(false)}
+      />
+    )}
+    </>
   )
 }
