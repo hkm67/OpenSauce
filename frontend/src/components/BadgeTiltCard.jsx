@@ -56,20 +56,26 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
     setHovered(false)
   }
 
-  const handleTouchMove = (e) => {
-    if (!cardRef.current) return
-    isDragging.current = true
-    const touch = e.touches[0]
-    const rect = cardRef.current.getBoundingClientRect()
-    const rx = (touch.clientX - rect.left) / rect.width
-    const ry = (touch.clientY - rect.top) / rect.height
-    setTilt({ x: (ry - 0.5) * 18, y: (rx - 0.5) * -18, rx, ry })
-    setHovered(true)
-  }
-
   const handleTouchEnd = () => {
     isDragging.current = false
   }
+
+  useEffect(() => {
+    const card = cardRef.current
+    if (!card) return
+    const onTouchMove = (e) => {
+      e.preventDefault()
+      isDragging.current = true
+      const touch = e.touches[0]
+      const rect = card.getBoundingClientRect()
+      const rx = (touch.clientX - rect.left) / rect.width
+      const ry = (touch.clientY - rect.top) / rect.height
+      setTilt({ x: (ry - 0.5) * 18, y: (rx - 0.5) * -18, rx, ry })
+      setHovered(true)
+    }
+    card.addEventListener('touchmove', onTouchMove, { passive: false })
+    return () => card.removeEventListener('touchmove', onTouchMove)
+  }, [])
 
   useEffect(() => {
     const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
@@ -170,10 +176,9 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
         onMouseMove={handleMouseMove}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onClick={(e) => e.stopPropagation()}
-        className="badge-tilt-card relative z-10 flex flex-col md:grid md:grid-cols-[55%_1fr] overflow-hidden rounded-2xl w-[70vw] min-w-[280px] md:w-[60vw] md:min-w-[760px] md:max-w-[1200px] p-[10px] gap-[10px]"
+        className="badge-tilt-card relative z-10 flex flex-col md:grid md:grid-cols-[55%_1fr] overflow-hidden rounded-2xl w-[80vw] min-w-[280px] md:w-[60vw] md:min-w-[760px] md:max-w-[1200px] p-[10px] gap-[10px]"
         style={{
           '--ratio-x': tilt.rx,
           '--ratio-y': tilt.ry,
