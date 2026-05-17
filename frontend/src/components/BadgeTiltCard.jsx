@@ -38,8 +38,10 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
   const [tilt, setTilt] = useState({ x: 0, y: 0, rx: 0.5, ry: 0.5 })
   const [hovered, setHovered] = useState(false)
   const [capturing, setCapturing] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
   const cardRef = useRef(null)
   const shareCardRef = useRef(null)
+  const desktopShareRef = useRef(null)
   const isDragging = useRef(false)
 
   const handleMouseMove = (e) => {
@@ -104,27 +106,43 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
   const shadowY = tilt.x * 0.6
   const shadowBlur = 50 + Math.abs(tilt.x + tilt.y) * 0.5
 
-  const handleLinkedIn = async (e) => {
-    e.stopPropagation()
+  const captureAndShare = async (isMobile) => {
     setCapturing(true)
     try {
-      const isMobile = window.matchMedia('(pointer: coarse)').matches
-      const target = isMobile && shareCardRef.current ? shareCardRef.current : cardRef.current
+      const target = isMobile ? shareCardRef.current : desktopShareRef.current
       const canvas = await captureElement(target)
       const file = await toFile(canvas, `${badge.name}-badge`)
-      if (navigator.canShare?.({ files: [file] })) {
+      if (isMobile && navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: `I earned the "${badge.name}" badge on OpenSauce!`, text: badge.description })
         return
       }
-      // Fallback: download image
       const a = document.createElement('a')
       a.download = `${badge.name}-badge.png`
       a.href = canvas.toDataURL('image/png')
       a.click()
     } catch { /* user cancelled */ } finally { setCapturing(false) }
-    if (!window.matchMedia('(pointer: coarse)').matches) {
-      window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.href)}`, '_blank', 'noopener')
+  }
+
+  const handleShareClick = (e) => {
+    e.stopPropagation()
+    const isMobile = window.matchMedia('(pointer: coarse)').matches
+    if (isMobile) {
+      captureAndShare(true)
+    } else {
+      setShowMenu((v) => !v)
     }
+  }
+
+  const handleDownload = (e) => {
+    e.stopPropagation()
+    setShowMenu(false)
+    captureAndShare(false)
+  }
+
+  const handleLinkedIn = (e) => {
+    e.stopPropagation()
+    setShowMenu(false)
+    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.href)}`, '_blank', 'noopener')
   }
 
   const handleInstagram = async (e) => {
@@ -154,7 +172,7 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 md:gap-16 p-6 overflow-hidden"
       style={{ backgroundColor: 'rgba(9,9,11,0.88)' }}
-      onClick={onClose}
+      onClick={() => { setShowMenu(false); onClose() }}
     >
       {/* Grid backdrop */}
       <div className="absolute inset-0 opacity-20 pointer-events-none" style={{
@@ -305,62 +323,100 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
       </div>
 
       {/* Share buttons below card — only shown when badge is earned */}
-      {badge.earned && <div className="relative z-10 flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-        <button
-          onClick={handleLinkedIn}
-          disabled={capturing}
-          className="btn-outline flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 !text-white !border-white/60 hover:!border-white"
-          style={{}}
-        >
-          {capturing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
-          <span className="md:hidden">Share</span>
-          <span className="hidden md:inline">Share on LinkedIn</span>
-        </button>
-      </div>}
+      {badge.earned && (
+        <div className="relative z-10 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {/* Mobile: share + download buttons */}
+          <button
+            onClick={handleShareClick}
+            disabled={capturing}
+            className="md:hidden btn-outline flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 !text-white !border-white/60 hover:!border-white"
+          >
+            {capturing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+            <span>Share</span>
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={capturing}
+            className="md:hidden btn-outline flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 !text-white !border-white/60 hover:!border-white"
+          >
+            {capturing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            <span>Download</span>
+          </button>
 
-      {/* Hidden off-screen desktop card used for mobile share image capture */}
-      <div
-        ref={shareCardRef}
-        style={{
-          position: 'fixed', left: '-9999px', top: 0,
-          width: '800px', display: 'flex', flexDirection: 'row',
-          borderRadius: '16px', padding: '10px', gap: '10px',
-          background: 'linear-gradient(45deg, #75e4ee, #f85fbe)',
-          pointerEvents: 'none', zIndex: -1,
-        }}
-      >
-        {/* Left image */}
-        <div style={{ width: '55%', aspectRatio: '1/1', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#fff', flexShrink: 0 }}>
-          <img src={awardImage} alt={badge.name} crossOrigin="anonymous"
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          {/* Desktop: two separate buttons */}
+          <button
+            onClick={handleLinkedIn}
+            className="hidden md:flex items-center gap-2 btn-outline px-4 py-2 text-sm !text-white !border-white/60 hover:!border-white"
+          >
+            <LinkedinIcon className="w-4 h-4" />
+            Share on LinkedIn
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={capturing}
+            className="hidden md:flex items-center gap-2 btn-outline px-4 py-2 text-sm disabled:opacity-50 !text-white !border-white/60 hover:!border-white"
+          >
+            {capturing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            Download
+          </button>
         </div>
-        {/* Right certificate */}
-        <div style={{ flex: 1, backgroundColor: '#fdf8f0', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: badge.earned ? 'space-between' : 'center' }}>
-          <div>
-            <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#a49d9a', fontFamily: 'monospace', marginBottom: '8px' }}>
-              OpenSauce · Certificate of Achievement
-            </p>
-            <div style={{ height: '1px', backgroundColor: '#d4cfc9', marginBottom: '16px' }} />
-            <p style={{ fontSize: '16px', color: '#3d3a39', marginBottom: '12px' }}>
-              Dear <strong style={{ fontFamily: 'serif', fontSize: '18px' }}>{displayName}</strong>,
-            </p>
-            <p style={{ fontSize: '14px', color: '#6b6460', marginBottom: '10px' }}>Thank you for volunteering with OpenSauce.</p>
-            <p style={{ fontSize: '14px', color: '#6b6460', marginBottom: '4px' }}>
-              You've earned the <strong style={{ fontFamily: 'serif', color: '#3d3a39' }}>{badge.name}</strong> badge —
-            </p>
-            <p style={{ fontSize: '14px', color: '#6b6460', fontStyle: 'italic', marginBottom: '16px' }}>{badge.description}</p>
-            <p style={{ fontSize: '11px', fontFamily: 'monospace', color: '#a49d9a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>Progress</p>
-            <div style={{ height: '8px', borderRadius: '9999px', backgroundColor: '#e8e2da', overflow: 'hidden' }}>
-              <div style={{ height: '100%', borderRadius: '9999px', backgroundColor: '#FF6347', width: `${Math.min(100, Math.round((contributions / badge.threshold) * 100))}%` }} />
+      )}
+
+      {/* Shared hidden card content renderer */}
+      {[
+        { ref: shareCardRef,   width: 390, col: true  },
+        { ref: desktopShareRef, width: 820, col: false },
+      ].map(({ ref, width, col }) => (
+        <div key={width} ref={ref} style={{
+          position: 'fixed', left: '-9999px', top: 0, pointerEvents: 'none', zIndex: -1,
+          width: `${width}px`, padding: '40px',
+          backgroundColor: '#f5f0e8',
+          backgroundImage: 'linear-gradient(rgba(180,160,130,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(180,160,130,0.3) 1px, transparent 1px)',
+          backgroundSize: '20px 20px',
+        }}>
+          {/* Card */}
+          <div style={{
+            display: 'flex', flexDirection: col ? 'column' : 'row',
+            borderRadius: '16px', padding: '10px', gap: '10px',
+            background: 'linear-gradient(45deg, #75e4ee, #f85fbe)',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+          }}>
+            {/* Image panel */}
+            <div style={{ width: col ? '100%' : '55%', aspectRatio: col ? '1/1' : '1/1', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#fff', flexShrink: 0 }}>
+              <img src={awardImage} alt={badge.name} crossOrigin="anonymous"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+            {/* Certificate panel */}
+            <div style={{ flex: 1, backgroundColor: '#fdf8f0', borderRadius: '12px', padding: col ? '20px' : '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px' }}>
+              <div>
+                <p style={{ fontSize: col ? '9px' : '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#a49d9a', fontFamily: 'monospace', marginBottom: '6px' }}>
+                  OpenSauce · Certificate of Achievement
+                </p>
+                <div style={{ height: '1px', backgroundColor: '#d4cfc9', marginBottom: col ? '12px' : '16px' }} />
+                <p style={{ fontSize: col ? '14px' : '16px', color: '#3d3a39', marginBottom: col ? '8px' : '12px' }}>
+                  Dear <strong style={{ fontFamily: 'serif', fontSize: col ? '16px' : '18px' }}>{displayName}</strong>,
+                </p>
+                <p style={{ fontSize: col ? '12px' : '14px', color: '#6b6460', marginBottom: col ? '6px' : '10px' }}>Thank you for volunteering with OpenSauce.</p>
+                <p style={{ fontSize: col ? '12px' : '14px', color: '#6b6460', marginBottom: '3px' }}>
+                  You've earned the <strong style={{ fontFamily: 'serif', color: '#3d3a39' }}>{badge.name}</strong> badge —
+                </p>
+                <p style={{ fontSize: col ? '12px' : '14px', color: '#6b6460', fontStyle: 'italic', marginBottom: badge.threshold > 0 ? '12px' : '0' }}>{badge.description}</p>
+                {badge.threshold > 0 && <>
+                  <p style={{ fontSize: '10px', fontFamily: 'monospace', color: '#a49d9a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>Progress</p>
+                  <div style={{ height: '6px', borderRadius: '9999px', backgroundColor: '#e8e2da', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: '9999px', backgroundColor: '#FF6347', width: `${Math.min(100, Math.round((contributions / badge.threshold) * 100))}%` }} />
+                  </div>
+                </>}
+              </div>
+              <div style={{ borderTop: '1px solid #e8e2da', paddingTop: '12px' }}>
+                <p style={{ fontSize: '10px', color: '#a49d9a', fontFamily: 'monospace', marginBottom: '3px' }}>Awarded on {AWARDED_DATE}</p>
+                <p style={{ fontSize: col ? '14px' : '16px', fontWeight: '600', color: '#3d3a39', letterSpacing: '0.05em' }}>OpenSauce</p>
+                <div style={{ marginTop: '4px', width: '48px', height: '1px', backgroundColor: '#3d3a39' }} />
+              </div>
             </div>
           </div>
-          <div style={{ borderTop: '1px solid #e8e2da', paddingTop: '16px', marginTop: '16px' }}>
-            <p style={{ fontSize: '11px', color: '#a49d9a', fontFamily: 'monospace', marginBottom: '4px' }}>Awarded on {AWARDED_DATE}</p>
-            <p style={{ fontSize: '16px', fontWeight: '600', color: '#3d3a39', letterSpacing: '0.05em' }}>OpenSauce</p>
-            <div style={{ marginTop: '4px', width: '64px', height: '1px', backgroundColor: '#3d3a39' }} />
-          </div>
         </div>
-      </div>
+      ))}
     </div>
   )
 }
