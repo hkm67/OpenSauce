@@ -8,4 +8,6 @@ export const getCurrentUser = () => client.get('/user')
 
 export const logout = () => client.post('/logout')
 
+export const resetPassword = (email) => client.post('/reset-password', { email })
+
 export const healthCheck = () => client.get('/health')

@@ -102,14 +102,14 @@ export default function Contributions() {
   return (
     <>
     <DashboardLayout>
-      <div className="p-8">
-        <div className="flex items-start justify-between mb-6">
+      <div className="p-4 sm:p-8">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-6">
           <div>
             <h1 className="text-heading font-normal text-factory-black">Contributions</h1>
             <p className="text-body-sm text-graphite mt-1">Your contribution plans and community leaderboard.</p>
           </div>
           <Link to="/dashboard/marketplace" state={{ openFlow: true }}
-            className="bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors">
+            className="shrink-0 self-start bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors">
             Start Contribution
           </Link>
         </div>
@@ -117,7 +117,7 @@ export default function Contributions() {
         {/* Rank hero */}
         {myEntry && (
           <div className="card mb-5 flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div>
                   <p className="text-heading font-normal text-factory-black">
@@ -232,7 +232,7 @@ export default function Contributions() {
                 <h2 className="text-body text-factory-black">Badges</h2>
                 <span className="text-caption text-ash-gray font-mono">{earnedCount} / {badges.length} earned</span>
               </div>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {badges.map((badge) => (
                   <BadgeCard key={badge.id} badge={badge} size="sm" onClick={() => setSelectedBadge(badge)} />
                 ))}
@@ -313,7 +313,7 @@ export default function Contributions() {
                             ? <span className="text-sm">{MEDALS[i]}</span>
                             : <span className="text-caption text-ash-gray font-mono">#{i+1}</span>}
                         </td>
-                        <td className="px-2 py-2 text-caption font-mono text-factory-black truncate max-w-[120px]">
+                        <td className="px-2 py-2 text-caption font-mono text-factory-black truncate max-w-[80px] sm:max-w-[160px]">
                           {repo.github_repo || extractRepo(repo.github_repo_url)}
                         </td>
                         <td className="px-3 py-2 text-caption font-mono text-factory-black text-right">{repo.contributions}</td>

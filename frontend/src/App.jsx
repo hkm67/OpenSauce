@@ -15,6 +15,8 @@ import Marketplace from './pages/dashboard/Marketplace'
 import Settings from './pages/Settings'
 import Notifications from './pages/Notifications'
 import Docs from './pages/Docs'
+import About from './pages/About'
+import ScrollToTop from './components/ScrollToTop'
 
 function PlaceholderPage({ title }) {
   return (
@@ -31,6 +33,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ScrollToTop />
         <Routes>
           {/* Public */}
           <Route path="/" element={<Home />} />
@@ -39,6 +42,7 @@ export default function App() {
           <Route path="/signup" element={<SignUp />} />
           <Route path="/projects" element={<Navigate to="/dashboard/marketplace" replace />} />
           <Route path="/docs" element={<Docs />} />
+          <Route path="/about" element={<About />} />
           <Route path="/terms" element={<PlaceholderPage title="Terms of Service" />} />
           <Route path="/privacy" element={<PlaceholderPage title="Privacy Policy" />} />
           <Route path="/support" element={<PlaceholderPage title="Support" />} />

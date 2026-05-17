@@ -22,18 +22,9 @@ export default function Footer() {
               ],
             },
             {
-              label: 'Developers',
-              links: [
-                { to: '/docs', label: 'Documentation' },
-                { to: '/docs#api', label: 'API Reference' },
-                { to: '/docs#sdk', label: 'Agent SDK' },
-                { to: '/docs#webhooks', label: 'Webhooks' },
-              ],
-            },
-            {
               label: 'Company',
               links: [
-                { to: '/#about', label: 'About' },
+                { to: '/about', label: 'About' },
                 { to: '/terms', label: 'Terms' },
                 { to: '/privacy', label: 'Privacy' },
                 { to: '/support', label: 'Support' },

@@ -59,7 +59,7 @@ function buildHeatmap(achievements) {
 function HeatmapCell({ intensity }) {
   return (
     <div
-      className="w-2.5 h-2.5 rounded-[2px]"
+      className="w-full aspect-square rounded-[2px]"
       style={{ backgroundColor: HEAT_COLORS[intensity] }}
     />
   )
@@ -178,10 +178,10 @@ export default function Overview() {
   return (
     <>
     <DashboardLayout>
-      <div className="p-8 space-y-6">
+      <div className="p-4 sm:p-8 space-y-6">
 
         {/* Promotion Banner */}
-        <div className="relative overflow-hidden rounded-lg bg-factory-black px-8 py-6 flex items-center justify-between gap-6">
+        <div className="relative overflow-hidden rounded-lg bg-factory-black px-5 sm:px-8 py-5 sm:py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6">
           <PixelCanvas
             colors={['#FF6347', '#ff8c69', '#ffffff']}
             gap={16}
@@ -261,21 +261,19 @@ export default function Overview() {
                   <h2 className="text-body text-factory-black">Contribution Activity</h2>
                   <span className="text-caption text-ash-gray font-mono">{totalContributions} total</span>
                 </div>
-                <div className="overflow-x-auto">
-                  <div className="flex gap-0.5">
-                    {heatmap.map((week, wi) => (
-                      <div key={wi} className="flex flex-col gap-0.5">
-                        {week.map((intensity, di) => (
-                          <HeatmapCell key={di} intensity={intensity} />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
+                <div className="flex gap-0.5 w-full">
+                  {heatmap.map((week, wi) => (
+                    <div key={wi} className="flex-1 flex flex-col gap-0.5 min-w-0">
+                      {week.map((intensity, di) => (
+                        <HeatmapCell key={di} intensity={intensity} />
+                      ))}
+                    </div>
+                  ))}
                 </div>
                 <div className="flex items-center gap-1.5 mt-3">
                   <span className="text-caption text-ash-gray">Less</span>
                   {HEAT_COLORS.map((c, i) => (
-                    <div key={i} className="w-2.5 h-2.5 rounded-[2px]" style={{ backgroundColor: c }} />
+                    <div key={i} className="w-2.5 h-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: c }} />
                   ))}
                   <span className="text-caption text-ash-gray">More</span>
                 </div>
@@ -304,7 +302,7 @@ export default function Overview() {
                 <h2 className="text-body text-factory-black">Badges</h2>
                 <span className="text-caption text-ash-gray font-mono">{earnedCount} / {badges.length} earned</span>
               </div>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {badges.map((badge) => (
                   <BadgeCard key={badge.id} badge={badge} size="sm" onClick={() => setSelectedBadge(badge)} />
                 ))}

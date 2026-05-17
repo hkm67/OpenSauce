@@ -211,6 +211,23 @@ def login():
     return jsonify({"oauth_token": create_token(user), "token_type": "Bearer", "user": user})
 
 
+@users_bp.post("/reset-password")
+@rate_limit("auth")
+def reset_password():
+    data = request.get_json(silent=True) or {}
+    missing = require_fields(data, ["email"])
+    if missing:
+        return error(missing)
+
+    if not LOCAL_AUTH_ENABLED:
+        try:
+            supabase_auth_request("/auth/v1/recover", {"email": data["email"]})
+        except (RuntimeError, ValueError):
+            pass  # always return success to avoid email enumeration
+
+    return jsonify({"message": "If this email is registered, you will receive a reset link shortly."})
+
+
 @users_bp.get("/user")
 @require_auth
 @rate_limit("api")
