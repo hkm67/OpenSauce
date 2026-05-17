@@ -11,7 +11,7 @@ const CATEGORIES = ['All', ...TAXONOMY]
 export default function Marketplace() {
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('open source good first issue')
+  const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState(null)
@@ -27,7 +27,7 @@ export default function Marketplace() {
   useEffect(() => {
     const handle = setTimeout(() => {
       setLoading(true)
-      searchGithubRepos(search || 'open source good first issue', 20, page)
+      searchGithubRepos(search || 'open source', 20, page)
         .then((r) => {
           setProjects(r.data.repositories || [])
           setPagination(r.data.pagination || null)

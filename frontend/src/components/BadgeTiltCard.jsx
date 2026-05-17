@@ -162,60 +162,83 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
           className="badge-cert-right flex flex-col justify-between p-6 rounded-xl"
           style={{ backgroundColor: '#fdf8f0' }}
         >
-          {/* Header */}
-          <div>
-            <div className="mb-3">
-              <p className="text-xs tracking-[0.2em] uppercase text-[#a49d9a] font-mono">
-                OpenSauce ·<br />Certificate of Achievement
-              </p>
-              <div className="mt-1 flex items-center gap-2">
-                <div className="h-px flex-1 bg-[#d4cfc9]" />
-                <span className="text-[#c8b89a] text-xs">✦</span>
-                <div className="h-px flex-1 bg-[#d4cfc9]" />
-              </div>
-            </div>
-
-            {/* Letter body */}
-            <p className="text-base text-[#3d3a39] mb-3">
-              Dear <span className="font-serif font-semibold text-lg">{displayName}</span>,
-            </p>
-            <p className="text-body-sm text-[#6b6460] leading-relaxed mb-3">
-              Thank you for volunteering with OpenSauce.
-            </p>
-            <p className="text-body-sm text-[#6b6460] leading-relaxed mb-4">
-              You've earned the{' '}
-              <span className="font-serif font-semibold text-[#3d3a39]">{badge.name}</span> badge —{' '}
-              <span className="italic">{badge.description}</span>
-            </p>
-
-            {/* Progress bar */}
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-xs font-mono text-[#a49d9a] uppercase tracking-wider">Progress</span>
-              <span className="text-xs font-mono text-[#3d3a39]">
-                {Math.min(contributions, badge.threshold)} / {badge.threshold}
-              </span>
-            </div>
-            <div className="h-2 rounded-full overflow-hidden mb-1.5" style={{ backgroundColor: '#e8e2da' }}>
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.min(100, Math.round((contributions / badge.threshold) * 100))}%`,
-                  backgroundColor: badge.earned ? '#FF6347' : '#a49d9a',
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Footer — signature */}
-          <div className="border-t pt-3" style={{ borderColor: '#e8e2da' }}>
-            <div className="flex items-end justify-between mt-3">
+          {badge.earned ? (
+            <>
+              {/* Header */}
               <div>
-                <p className="text-xs text-[#a49d9a] font-mono mb-0.5">Awarded on {AWARDED_DATE}</p>
-                <p className="text-base font-semibold text-[#3d3a39] tracking-wide">OpenSauce</p>
-                <div className="mt-1 w-16 h-px" style={{ backgroundColor: '#3d3a39' }} />
+                <div className="mb-3">
+                  <p className="text-xs tracking-[0.2em] uppercase text-[#a49d9a] font-mono">
+                    OpenSauce ·<br />Certificate of Achievement
+                  </p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <div className="h-px flex-1 bg-[#d4cfc9]" />
+                    <span className="text-[#c8b89a] text-xs">✦</span>
+                    <div className="h-px flex-1 bg-[#d4cfc9]" />
+                  </div>
+                </div>
+
+                {/* Letter body */}
+                <p className="text-base text-[#3d3a39] mb-3">
+                  Dear <span className="font-serif font-semibold text-lg">{displayName}</span>,
+                </p>
+                <p className="text-body-sm text-[#6b6460] leading-relaxed mb-3">
+                  Thank you for volunteering with OpenSauce.
+                </p>
+                <p className="text-body-sm text-[#6b6460] leading-relaxed mb-4">
+                  You've earned the{' '}
+                  <span className="font-serif font-semibold text-[#3d3a39]">{badge.name}</span> badge —{' '}
+                  <span className="italic">{badge.description}</span>
+                </p>
+
+                {/* Progress bar */}
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-xs font-mono text-[#a49d9a] uppercase tracking-wider">Progress</span>
+                  <span className="text-xs font-mono text-[#3d3a39]">
+                    {Math.min(contributions, badge.threshold)} / {badge.threshold}
+                  </span>
+                </div>
+                <div className="h-2 rounded-full overflow-hidden mb-1.5" style={{ backgroundColor: '#e8e2da' }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, Math.round((contributions / badge.threshold) * 100))}%`, backgroundColor: '#FF6347' }}
+                  />
+                </div>
+              </div>
+
+              {/* Footer — signature */}
+              <div className="border-t pt-3" style={{ borderColor: '#e8e2da' }}>
+                <div className="flex items-end justify-between mt-3">
+                  <div>
+                    <p className="text-xs text-[#a49d9a] font-mono mb-0.5">Awarded on {AWARDED_DATE}</p>
+                    <p className="text-base font-semibold text-[#3d3a39] tracking-wide">OpenSauce</p>
+                    <div className="mt-1 w-16 h-px" style={{ backgroundColor: '#3d3a39' }} />
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Unearned — progress only */
+            <div className="flex flex-col justify-center h-full gap-3">
+              <div>
+                <p className="font-serif font-semibold text-xl text-[#3d3a39] mb-1">{badge.name}</p>
+                <p className="text-body-sm text-[#6b6460] italic">{badge.description}</p>
+              </div>
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-xs font-mono text-[#a49d9a] uppercase tracking-wider">Progress</span>
+                  <span className="text-xs font-mono text-[#3d3a39]">
+                    {Math.min(contributions, badge.threshold)} / {badge.threshold}
+                  </span>
+                </div>
+                <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#e8e2da' }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, Math.round((contributions / badge.threshold) * 100))}%`, backgroundColor: '#a49d9a' }}
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

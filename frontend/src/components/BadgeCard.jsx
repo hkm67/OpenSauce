@@ -6,8 +6,9 @@ export default function BadgeCard({ badge, size = 'md', onClick }) {
       onClick={onClick}
       className={`card relative flex flex-col items-center text-center gap-1.5 transition-opacity
         ${sm ? 'p-3' : 'p-4'}
-        ${badge.earned ? 'border-b-2 border-code-orange' : 'opacity-40'}
-        ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+        ${badge.earned ? 'border-transparent' : 'opacity-40'}
+        ${onClick ? 'cursor-pointer transition-shadow' : ''}`}
+      style={badge.earned ? { boxShadow: '0 0 0 2px rgba(239,111,46,0.18), 0 4px 16px rgba(239,111,46,0.15)' } : {}}
     >
       <div className="relative">
         <img

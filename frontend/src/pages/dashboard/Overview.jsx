@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import DashboardLayout from '../../components/DashboardLayout'
+import PixelCanvas from '../../components/PixelCanvas'
 import BadgeCard from '../../components/BadgeCard'
 import BadgeTiltCard from '../../components/BadgeTiltCard'
+import SparklesButton from '../../components/SparklesButton'
 import { useAuth } from '../../contexts/AuthContext'
 import { getDashboard, getAchievements } from '../../api/achievements'
 import { MOCK_ACHIEVEMENTS, MOCK_DASHBOARD } from '../../api/mock'
@@ -180,7 +182,12 @@ export default function Overview() {
 
         {/* Promotion Banner */}
         <div className="relative overflow-hidden rounded-lg bg-factory-black px-8 py-6 flex items-center justify-between gap-6">
-          <div className="dot-grid absolute inset-0 opacity-20" />
+          <PixelCanvas
+            colors={['#FF6347', '#ff8c69', '#ffffff']}
+            gap={16}
+            speed={30}
+            autoPlay={false}
+          />
           <div className="relative">
             <p className="text-caption text-cool-gray mb-1 font-mono uppercase tracking-widest">OpenSauce Platform</p>
             <h1 className="text-heading font-normal text-faded-silver mb-1">
@@ -188,13 +195,15 @@ export default function Overview() {
             </h1>
             <p className="text-body-sm text-ash-gray">Join thousands of contributors making OSS better, automatically.</p>
           </div>
-          <Link
-            to="/dashboard/marketplace"
-            state={{ openFlow: true }}
-            className="relative shrink-0 bg-code-orange text-faded-silver px-5 py-2.5 text-body-sm rounded hover:bg-code-orange/90 transition-colors whitespace-nowrap"
-          >
-            Start Contribution
-          </Link>
+          <SparklesButton className="relative shrink-0" colors={['#ffffff', '#fef08a', '#fdba74', '#c4b5fd', '#86efac']}>
+            <Link
+              to="/dashboard/marketplace"
+              state={{ openFlow: true }}
+              className="relative block bg-code-orange text-faded-silver px-5 py-2.5 text-body-sm rounded hover:bg-code-orange/90 transition-colors whitespace-nowrap"
+            >
+              Start Contribution
+            </Link>
+          </SparklesButton>
         </div>
 
         {/* Main two-column layout */}
