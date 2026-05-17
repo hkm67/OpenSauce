@@ -13,7 +13,7 @@ import { getBadges } from '../../config/badges'
 import { categorizeProject, CATEGORY_COLORS } from '../../utils/category'
 
 const HEAT_COLORS = ['#eeeeee', '#fcd5b8', '#f9a96c', '#f37c2a', '#ef6f2e']
-const HEATMAP_WEEKS = 52
+const HEATMAP_WEEKS = 26
 const HEATMAP_DAYS = 7
 
 function startOfDay(date) {
