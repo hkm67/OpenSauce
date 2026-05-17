@@ -334,14 +334,6 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
             {capturing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
             <span>Share</span>
           </button>
-          <button
-            onClick={handleDownload}
-            disabled={capturing}
-            className="md:hidden btn-outline flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 !text-white !border-white/60 hover:!border-white"
-          >
-            {capturing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            <span>Download</span>
-          </button>
 
           {/* Desktop: two separate buttons */}
           <button
