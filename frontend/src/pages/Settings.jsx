@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import DashboardLayout from '../components/DashboardLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { addAchievement } from '../api/achievements'
+import { getPreferences, setPreferences } from '../api/preferences'
+import { CATEGORIES } from '../utils/category'
 
 export default function Settings() {
   const { user } = useAuth()
@@ -10,13 +12,47 @@ export default function Settings() {
   const [skillSuccess, setSkillSuccess] = useState('')
   const [skillError, setSkillError] = useState('')
 
+  const [prefs, setPrefs] = useState({ categories: [], notes: '' })
+  const [prefsLoading, setPrefsLoading] = useState(true)
+  const [prefsSaving, setPrefsSaving] = useState(false)
+  const [prefsStatus, setPrefsStatus] = useState('')
+
   const tabs = [
     { key: 'profile',       label: 'Profile' },
-    { key: 'api',           label: 'API Keys' },
-    { key: 'skills',        label: 'Skills' },
+    { key: 'preferences',   label: 'Preferences' },
     { key: 'security',      label: 'Security' },
     { key: 'integrations',  label: 'Integrations' },
   ]
+
+  useEffect(() => {
+    getPreferences()
+      .then((r) => setPrefs(r.data.preferences || { categories: [], notes: '' }))
+      .catch(() => {})
+      .finally(() => setPrefsLoading(false))
+  }, [])
+
+  const togglePrefCategory = (cat) =>
+    setPrefs((prev) => ({
+      ...prev,
+      categories: prev.categories.includes(cat)
+        ? prev.categories.filter((c) => c !== cat)
+        : [...prev.categories, cat],
+    }))
+
+  const savePrefs = async () => {
+    setPrefsSaving(true)
+    setPrefsStatus('')
+    try {
+      const r = await setPreferences(prefs)
+      setPrefs(r.data.preferences || prefs)
+      setPrefsStatus('Saved')
+      setTimeout(() => setPrefsStatus(''), 1800)
+    } catch {
+      setPrefsStatus('Failed to save')
+    } finally {
+      setPrefsSaving(false)
+    }
+  }
 
   const handleAddSkill = async (e) => {
     e.preventDefault()
@@ -71,6 +107,71 @@ export default function Settings() {
                 <p className="text-caption text-ash-gray mt-1">Username cannot be changed.</p>
               </div>
               <button className="btn-primary">Save changes</button>
+            </div>
+          )}
+
+          {tab === 'preferences' && (
+            <div className="card space-y-5">
+              <div>
+                <p className="text-body text-factory-black">Preferred areas</p>
+                <p className="text-caption text-ash-gray mt-0.5">
+                  Pick the categories you'd like to contribute to. We use these to
+                  recommend projects in the marketplace.
+                </p>
+              </div>
+
+              {prefsLoading ? (
+                <p className="text-caption text-ash-gray">Loading…</p>
+              ) : (
+                <>
+                  <div className="flex gap-2 flex-wrap">
+                    {CATEGORIES.map((cat) => {
+                      const on = prefs.categories.includes(cat)
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => togglePrefCategory(cat)}
+                          className={`rounded px-3 py-1 text-caption border transition-colors ${
+                            on
+                              ? 'bg-factory-black text-faded-silver border-factory-black'
+                              : 'bg-transparent text-graphite border-cool-gray hover:border-graphite'
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <div>
+                    <label className="label">Notes for the recommender</label>
+                    <textarea
+                      className="input min-h-[96px]"
+                      placeholder="e.g. I prefer Rust + systems work, no JS frameworks please."
+                      value={prefs.notes}
+                      onChange={(e) => setPrefs((p) => ({ ...p, notes: e.target.value }))}
+                      maxLength={1000}
+                    />
+                    <p className="text-caption text-ash-gray mt-1">
+                      {prefs.notes.length}/1000
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={savePrefs}
+                      disabled={prefsSaving}
+                      className="btn-primary disabled:opacity-60"
+                    >
+                      {prefsSaving ? 'Saving…' : 'Save preferences'}
+                    </button>
+                    {prefsStatus && (
+                      <span className="text-caption text-ash-gray">{prefsStatus}</span>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -134,8 +235,6 @@ export default function Settings() {
             <div className="space-y-3">
               {[
                 { name: 'GitHub',  desc: 'Connect to auto-import your repositories.' },
-                { name: 'Slack',   desc: 'Receive donation notifications in Slack.' },
-                { name: 'Webhook', desc: 'Send events to your own endpoint.' },
               ].map((int) => (
                 <div key={int.name} className="card flex items-center justify-between">
                   <div>

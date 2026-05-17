@@ -3,31 +3,30 @@ import { Link } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import ProjectCard from '../components/ProjectCard'
-import { getProjects } from '../api/projects'
+import { searchGithubRepos } from '../api/github'
 
 const LEADERBOARD = [
-  { rank: 1, name: 'Anthropic Research', tokens: '2.4M', projects: 18 },
-  { rank: 2, name: 'OpenAI Community',   tokens: '1.8M', projects: 14 },
-  { rank: 3, name: 'Vercel OSS',         tokens: '1.2M', projects: 11 },
-  { rank: 4, name: 'Meta AI Labs',       tokens: '980K',  projects: 9  },
-  { rank: 5, name: 'HuggingFace',        tokens: '850K',  projects: 7  },
+  { rank: 1, name: '@devhero42',      tokens: '2.4M', projects: 18 },
+  { rank: 2, name: '@codewithluna',   tokens: '1.8M', projects: 14 },
+  { rank: 3, name: '@rust_ninja',     tokens: '1.2M', projects: 11 },
+  { rank: 4, name: '@open_source_kai',tokens: '980K',  projects: 9  },
+  { rank: 5, name: '@aibuilder99',    tokens: '850K',  projects: 7  },
 ]
 
 const HOW_IT_WORKS = [
-  { step: '01', title: 'Connect your agent', body: 'Register your AI agent server and configure your API keys. OpenSauce monitors token usage in real time.' },
-  { step: '02', title: 'Set donation rules',  body: 'Choose projects you care about and set idle thresholds. Surplus tokens flow automatically when capacity is unused.' },
-  { step: '03', title: 'Track impact',        body: 'Your tokens power real contributions — PRs, issue triage, documentation — with full audit trails.' },
+  { step: '01', title: 'Pick a project you believe in', body: 'Browse our marketplace and choose an open source project that matters to you. From dev tools to AI frameworks — there\'s something for everyone.' },
+  { step: '02', title: 'Set up your volunteer agent',   body: 'Configure how your AI agent contributes. Define the scope, and let your agent do the heavy lifting on your behalf.' },
+  { step: '03', title: 'Run the prompt, make an impact', body: 'Launch your contribution with a single click. Your agent gets to work instantly — filing issues, writing code, and pushing real changes.' },
+  { step: '04', title: 'Earn your volunteer certificate', body: 'Every contribution you make is verified and recorded. Receive a digital certificate that proves your impact on the open source community.' },
 ]
-
-const TRUSTED = ['Anthropic', 'Vercel', 'HuggingFace', 'Linear', 'Supabase']
 
 export default function Home() {
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    getProjects()
-      .then((r) => setProjects(r.data.projects || []))
+    searchGithubRepos('open source good first issue', 6)
+      .then((r) => setProjects(r.data.repositories || []))
       .catch(() => setProjects([]))
       .finally(() => setLoading(false))
   }, [])
@@ -41,65 +40,31 @@ export default function Home() {
         <div className="max-w-content mx-auto px-6 py-20 grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           {/* Left */}
           <div>
-            <p className="font-mono text-caption text-code-orange mb-4 tracking-tight">NEW — Agent SDK v1.0 now available</p>
-            <h1 className="text-display font-normal text-factory-black mb-6" style={{ letterSpacing: '-2.88px', lineHeight: 1 }}>
-              Idle tokens,<br />open source<br />impact.
+            <p className="font-mono text-caption text-code-orange mb-4 tracking-tight">Volunteer your skills. Fuel open source.</p>
+            <h1 className="font-normal text-factory-black mb-6" style={{ fontSize: '42px', letterSpacing: '-1.5px', lineHeight: 1.15 }}>
+              Turn unused tokens into open-source contributions
             </h1>
             <p className="text-subheading text-graphite mb-8 max-w-sm" style={{ lineHeight: 1.5 }}>
               OpenSauce routes surplus AI agent tokens to the open source projects the world depends on. Zero waste. Real impact.
             </p>
 
-            <div className="flex flex-wrap items-center gap-3 mb-10">
+            <div className="flex flex-wrap items-center gap-3">
               <Link to="/signup" className="btn-primary px-4 py-2">
-                Get started free
+                Start Volunteer
               </Link>
-              <Link to="/projects" className="btn-outline px-4 py-2">
-                Browse projects
+              <Link to="/dashboard/marketplace" className="btn-outline px-4 py-2">
+                Browse GitHub repos
               </Link>
-            </div>
-
-            {/* CLI install */}
-            <div className="code-block flex items-center justify-between gap-4 max-w-sm">
-              <code className="text-body-sm font-mono text-factory-black">
-                pip install opensauce-sdk
-              </code>
-              <button className="text-caption text-ash-gray hover:text-factory-black transition-colors shrink-0">copy</button>
-            </div>
-
-            {/* Trusted by */}
-            <div className="flex items-center gap-4 mt-8 flex-wrap">
-              <span className="text-caption text-ash-gray">Trusted by</span>
-              {TRUSTED.map((org) => (
-                <span key={org} className="text-caption text-graphite">{org}</span>
-              ))}
             </div>
           </div>
 
-          {/* Right: code block + dot grid */}
+          {/* Right: hero banner */}
           <div className="relative hidden lg:block">
-            <div className="absolute inset-0 dot-grid opacity-60 rounded-card" />
-            <div className="relative code-block-dark text-body-sm font-mono leading-relaxed">
-              <div className="flex items-center gap-2 mb-4 pb-3 border-b border-graphite">
-                <span className="w-2.5 h-2.5 rounded-full bg-graphite" />
-                <span className="w-2.5 h-2.5 rounded-full bg-graphite" />
-                <span className="w-2.5 h-2.5 rounded-full bg-graphite" />
-                <span className="text-caption text-ash-gray ml-2">agent.yaml</span>
-              </div>
-              <div className="space-y-1">
-                <p><span className="text-code-orange">agent</span><span className="text-cool-gray">:</span> <span className="text-faded-silver">my-coding-agent</span></p>
-                <p><span className="text-code-orange">endpoint</span><span className="text-cool-gray">:</span> <span className="text-faded-silver">https://agent.example.com</span></p>
-                <p><span className="text-code-orange">max_tokens</span><span className="text-cool-gray">:</span> <span className="text-faded-silver">100_000</span></p>
-                <p className="mt-3"><span className="text-code-orange">idle_threshold</span><span className="text-cool-gray">:</span> <span className="text-faded-silver">10%</span></p>
-                <p><span className="text-code-orange">auto_donate</span><span className="text-cool-gray">:</span> <span className="text-faded-silver">true</span></p>
-                <p className="mt-3"><span className="text-code-orange">donate_to</span><span className="text-cool-gray">:</span></p>
-                <p className="pl-4"><span className="text-cool-gray">-</span> <span className="text-faded-silver">react/react</span></p>
-                <p className="pl-4"><span className="text-cool-gray">-</span> <span className="text-faded-silver">rust-lang/rust</span></p>
-                <p className="pl-4"><span className="text-cool-gray">-</span> <span className="text-faded-silver">vercel/next.js</span></p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-graphite">
-                <p className="text-caption text-ash-gray">↳ surplus pool: <span className="text-code-orange">38,800 tokens</span> ready to donate</p>
-              </div>
-            </div>
+            <img
+              src="/herobanner.png"
+              alt="OpenSauce hero"
+              className="w-full h-full object-cover rounded-card"
+            />
           </div>
         </div>
       </section>
@@ -109,7 +74,7 @@ export default function Home() {
         <div className="max-w-content mx-auto px-6 py-12 grid grid-cols-2 sm:grid-cols-4 gap-8">
           {[
             { value: '4.2M',  label: 'Tokens donated' },
-            { value: '120+',  label: 'Open source projects' },
+            { value: '120+',  label: 'Open source repos' },
             { value: '340',   label: 'Active contributors' },
             { value: '1,800', label: 'PRs assisted' },
           ].map((s) => (
@@ -128,10 +93,10 @@ export default function Home() {
             <div>
               <p className="text-body-sm text-ash-gray mb-3">How it works</p>
               <h2 className="text-heading-lg font-normal text-factory-black mb-6" style={{ letterSpacing: '-2.3px' }}>
-                Three steps from idle to impact.
+                Four steps from idle to impact.
               </h2>
               <p className="text-body text-graphite max-w-sm">
-                OpenSauce integrates with your existing agent infrastructure. No workflow changes required.
+                Start volunteering in minutes. No complex setup — just pick a GitHub repo and let your agent do the rest.
               </p>
             </div>
 
@@ -152,17 +117,17 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Browse Projects ───────────────────────────────── */}
+      {/* ── Browse Repositories ───────────────────────────── */}
       <section id="projects" className="border-b border-cool-gray/40">
         <div className="max-w-content mx-auto px-6 py-20">
           <div className="flex items-end justify-between mb-10">
             <div>
               <p className="text-body-sm text-ash-gray mb-2">Marketplace</p>
               <h2 className="text-heading-lg font-normal text-factory-black" style={{ letterSpacing: '-2.3px' }}>
-                Browse projects.
+                Browse GitHub repos.
               </h2>
             </div>
-            <Link to="/projects" className="btn-ghost text-body-sm">
+            <Link to="/dashboard/marketplace" className="btn-ghost text-body-sm">
               View all →
             </Link>
           </div>
@@ -175,13 +140,13 @@ export default function Home() {
             </div>
           ) : projects.length === 0 ? (
             <div className="card py-16 text-center">
-              <p className="text-body text-graphite mb-4">No projects yet.</p>
-              <Link to="/signup" className="btn-primary">Add first project</Link>
+              <p className="text-body text-graphite mb-4">No repositories found.</p>
+              <Link to="/signup" className="btn-primary">Start volunteering</Link>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {projects.slice(0, 6).map((p) => (
-                <ProjectCard key={p.id} project={p} />
+                <ProjectCard key={p.github_repo} project={p} />
               ))}
             </div>
           )}
@@ -208,7 +173,7 @@ export default function Home() {
                   <div key={row.rank} className="flex items-center gap-4 py-4 border-b border-cool-gray/30 hover:bg-faded-silver transition-colors">
                     <span className="font-mono text-caption text-ash-gray w-6 shrink-0">{String(row.rank).padStart(2, '0')}</span>
                     <span className="text-body text-factory-black flex-1">{row.name}</span>
-                    <span className="text-body-sm text-graphite hidden sm:block">{row.projects} projects</span>
+                    <span className="text-body-sm text-graphite hidden sm:block">{row.projects} repos</span>
                     <span className="font-mono text-body-sm text-code-orange">{row.tokens}</span>
                   </div>
                 ))}

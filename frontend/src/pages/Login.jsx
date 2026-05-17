@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { apiUrl } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Login() {
-  const [form, setForm] = useState({ username: '', password: '' })
+  const [form, setForm] = useState({ email: '', password: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
@@ -11,15 +12,19 @@ export default function Login() {
   const location = useLocation()
   const from = location.state?.from?.pathname || '/dashboard'
 
+  const handleGitHubLogin = () => {
+    window.location.assign(apiUrl('/oauth/github'))
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
-      await login(form.username, form.password)
+      await login(form.email, form.password)
       navigate(from, { replace: true })
     } catch (err) {
-      setError(err.response?.data?.error || 'Invalid username or password')
+      setError(err.message || err.response?.data?.error || 'Invalid email or password')
     } finally {
       setLoading(false)
     }
@@ -46,9 +51,9 @@ export default function Login() {
               <p className="text-body-sm text-red-600 border border-red-200 bg-red-50 rounded px-3 py-2">{error}</p>
             )}
             <div>
-              <label className="label">Username</label>
-              <input type="text" autoComplete="username" className="input" placeholder="your-username"
-                value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required />
+              <label className="label">Email</label>
+              <input type="email" autoComplete="email" className="input" placeholder="you@example.com"
+                value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
             </div>
             <div>
               <label className="label">Password</label>
@@ -59,6 +64,16 @@ export default function Login() {
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
+
+          <div className="flex items-center gap-3 my-5">
+            <div className="h-px flex-1 bg-cool-gray/40" />
+            <span className="text-caption text-ash-gray">or</span>
+            <div className="h-px flex-1 bg-cool-gray/40" />
+          </div>
+
+          <button type="button" onClick={handleGitHubLogin} className="btn-outline w-full justify-center py-2 text-body-sm">
+            Continue with GitHub
+          </button>
         </div>
       </div>
     </div>

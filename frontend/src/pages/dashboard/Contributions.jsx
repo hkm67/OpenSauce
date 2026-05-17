@@ -1,137 +1,344 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '../../contexts/AuthContext'
+import { Link } from 'react-router-dom'
 import DashboardLayout from '../../components/DashboardLayout'
-import { createActivity } from '../../api/activities'
-import { getProjects } from '../../api/projects'
+import BadgeCard from '../../components/BadgeCard'
+import BadgeTiltCard from '../../components/BadgeTiltCard'
+import ShareProfileCard from '../../components/ShareProfileCard'
+import { Share2 } from 'lucide-react'
+import { getDashboard, getAchievements } from '../../api/achievements'
+import { MOCK_ACHIEVEMENTS, MOCK_DASHBOARD } from '../../api/mock'
+import { getLevel, getBadges } from '../../config/badges'
 
-const HISTORY = [
-  { project: 'react/react',           tokens: 2400, prs: 3, date: '2026-05-09', type: 'active' },
-  { project: 'rust-lang/rust',        tokens: 1800, prs: 1, date: '2026-05-08', type: 'active' },
-  { project: 'vercel/next.js',        tokens: 3200, prs: 5, date: '2026-05-06', type: 'history' },
-  { project: 'microsoft/typescript',  tokens: 900,  prs: 1, date: '2026-04-28', type: 'history' },
-]
+const MEDALS = ['🥇', '🥈', '🥉']
+
+function extractRepo(url) {
+  if (url && !url.includes('github.com/') && url.includes('/')) return url
+  const m = url && url.match(/github\.com\/(.+)/)
+  return m ? m[1].replace(/\/$/, '') : url
+}
+
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+const WINDOW_LABELS = { monthly: 'This month', weekly: 'This week', daily: 'Today' }
+
+function XpBar({ progressPct }) {
+  return (
+    <div className="w-full h-1.5 bg-factory-light-gray rounded-full overflow-hidden border border-cool-gray/30">
+      <div
+        className="h-full bg-code-orange rounded-full transition-all duration-500"
+        style={{ width: `${progressPct}%` }}
+      />
+    </div>
+  )
+}
+
+function PodiumBlock({ user: u, rank, currentUsername }) {
+  if (!u) return <div className="flex-1" />
+  const isMe = u.username === currentUsername
+  return (
+    <div className={`flex-1 flex flex-col items-center ${rank === 1 ? 'pt-0' : 'pt-6'}`}>
+      <div className={`w-full bg-factory-light-gray border border-cool-gray/40 rounded-t px-2 py-3 flex flex-col items-center gap-1
+        ${rank === 1 ? 'ring-2 ring-code-orange/30' : ''}`}>
+        <span className="text-lg">{MEDALS[rank - 1]}</span>
+        <p className="text-caption text-factory-black text-center truncate w-full">{u.name || u.username}</p>
+        {isMe && <span className="text-[10px] border border-cool-gray/40 rounded px-1 text-ash-gray">you</span>}
+        <p className="font-mono text-caption text-ash-gray">{u.contributions}</p>
+      </div>
+    </div>
+  )
+}
 
 export default function Contributions() {
-  const [tab, setTab] = useState('active')
-  const [projects, setProjects] = useState([])
-  const [showContribute, setShowContribute] = useState(false)
-  const [contribForm, setContribForm] = useState({ opensource_id: '', url: '' })
-  const [success, setSuccess] = useState('')
-  const [error, setError] = useState('')
+  const { user } = useAuth()
+  const [data, setData] = useState(null)
+  const [plans, setPlans] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [plansLoading, setPlansLoading] = useState(true)
+  const [window, setWindow] = useState('monthly')
+  const [planTab, setPlanTab] = useState('history')
 
   useEffect(() => {
-    getProjects().then((r) => setProjects(r.data.projects || [])).catch(() => {})
+    getDashboard(50)
+      .then((r) => setData(r.data))
+      .catch(() => setData(MOCK_DASHBOARD))
+      .finally(() => setLoading(false))
+
+    getAchievements()
+      .then((r) => setPlans(r.data.achievements || []))
+      .catch(() => setPlans(MOCK_ACHIEVEMENTS))
+      .finally(() => setPlansLoading(false))
   }, [])
 
-  const handleContribute = async (e) => {
-    e.preventDefault()
-    setError('')
-    try {
-      await createActivity({ opensource_id: parseInt(contribForm.opensource_id), url: contribForm.url })
-      setSuccess('Contribution recorded!')
-      setShowContribute(false)
-      setContribForm({ opensource_id: '', url: '' })
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to record contribution')
-    }
-  }
+  const windowData = data?.windows?.[window]
+  const topRepos = windowData?.top_repositories || []
+  const topUsers = windowData?.top_users || []
+  const myRankIndex = topUsers.findIndex((u) => u.username === user?.username)
+  const myEntry = myRankIndex >= 0 ? topUsers[myRankIndex] : null
 
-  const displayed = HISTORY.filter((h) => tab === 'all' || h.type === tab)
-  const totalTokens = HISTORY.reduce((sum, h) => sum + h.tokens, 0)
-  const totalPRs = HISTORY.reduce((sum, h) => sum + h.prs, 0)
+  const activePlans = plans.filter((p) => p.name === 'Contribution Plan Started')
+  const history = plans.filter((p) => p.name !== 'Contribution Plan Started')
+  const visiblePlans = planTab === 'plan' ? activePlans : history
+
+  const { current: level, next: nextLevel, progressPct } = getLevel(myEntry?.contributions ?? 0)
+  const windowLabel = WINDOW_LABELS[window].toLowerCase()
+
+  const totalContributions = myEntry?.contributions ?? 0
+  const badges = getBadges(totalContributions)
+  const earnedCount = badges.filter((b) => b.earned).length
+  const [selectedBadge, setSelectedBadge] = useState(null)
+  const [shareProfileOpen, setShareProfileOpen] = useState(false)
+
+  const podiumUsers = [topUsers[1], topUsers[0], topUsers[2]]
+  const tableUsers = topUsers.slice(3)
 
   return (
+    <>
     <DashboardLayout>
       <div className="p-8">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-heading font-normal text-factory-black">My Contributions</h1>
-            <p className="text-body-sm text-graphite mt-1">Track your token donations and assisted PRs.</p>
+            <h1 className="text-heading font-normal text-factory-black">Contributions</h1>
+            <p className="text-body-sm text-graphite mt-1">Your contribution plans and community leaderboard.</p>
           </div>
-          <button onClick={() => setShowContribute(true)} className="btn-primary">+ Record contribution</button>
+          <Link to="/dashboard/marketplace" state={{ openFlow: true }}
+            className="bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors">
+            Start Contribution
+          </Link>
         </div>
 
-        {success && (
-          <div className="bg-factory-light-gray border border-cool-gray/40 text-factory-black rounded px-4 py-3 text-body-sm mb-6">
-            {success}
-          </div>
-        )}
-
-        {showContribute && (
-          <div className="card mb-6">
-            <h3 className="text-body text-factory-black mb-4">Record a contribution</h3>
-            <form onSubmit={handleContribute} className="space-y-4">
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded px-4 py-3 text-body-sm">{error}</div>
-              )}
-              <div>
-                <label className="label">Project</label>
-                <select className="input" value={contribForm.opensource_id}
-                  onChange={(e) => setContribForm({ ...contribForm, opensource_id: e.target.value })} required>
-                  <option value="">Select a project…</option>
-                  {projects.map((p) => <option key={p.id} value={p.id}>{p.url}</option>)}
-                </select>
+        {/* Rank hero */}
+        {myEntry && (
+          <div className="card mb-5 flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div>
+                  <p className="text-heading font-normal text-factory-black">
+                    {myRankIndex === 0 ? "You're leading the community!" : `You're ranked #${myRankIndex + 1}`}
+                  </p>
+                  <p className="text-body-sm text-graphite">
+                    {level.name} · {myEntry.contributions} contribution{myEntry.contributions !== 1 ? 's' : ''} {windowLabel}
+                  </p>
+                </div>
               </div>
-              <div>
-                <label className="label">Contribution URL (PR or issue)</label>
-                <input type="url" className="input" placeholder="https://github.com/org/repo/pull/123"
-                  value={contribForm.url} onChange={(e) => setContribForm({ ...contribForm, url: e.target.value })} required />
-              </div>
-              <div className="flex gap-3">
-                <button type="submit" className="btn-primary">Save</button>
-                <button type="button" onClick={() => setShowContribute(false)} className="btn-outline">Cancel</button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Impact summary */}
-        <div className="grid grid-cols-3 gap-3 mb-8">
-          {[
-            { label: 'Total tokens donated', value: totalTokens.toLocaleString() },
-            { label: 'PRs / issues assisted', value: totalPRs },
-            { label: 'Projects contributed',  value: new Set(HISTORY.map(h => h.project)).size },
-          ].map((s) => (
-            <div key={s.label} className="card text-center">
-              <p className="text-caption text-ash-gray mb-1">{s.label}</p>
-              <p className="text-heading font-normal text-factory-black font-mono">{s.value}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* List */}
-        <div className="card">
-          <div className="flex gap-1 border-b border-cool-gray/30 mb-5 -mx-4 px-4">
-            {[{ key: 'active', label: 'Active' }, { key: 'history', label: 'History' }, { key: 'all', label: 'All' }].map((t) => (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                className={`pb-3 px-1 mr-5 text-body-sm border-b-2 transition-colors ${
-                  tab === t.key ? 'border-factory-black text-factory-black' : 'border-transparent text-ash-gray hover:text-factory-black'
-                }`}>
-                {t.label}
+              <button
+                onClick={() => setShareProfileOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded border border-cool-gray/40 text-body-sm text-graphite hover:border-graphite hover:text-factory-black transition-colors shrink-0"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                Share Contribution Status
               </button>
-            ))}
+            </div>
+            <div className="flex flex-col gap-1">
+              <XpBar progressPct={progressPct} />
+              <p className="text-caption text-ash-gray">
+                {nextLevel ? `${myEntry.contributions} / ${nextLevel.min} contributions to ${nextLevel.name}` : 'Maximum level reached'}
+              </p>
+            </div>
           </div>
+        )}
 
-          <div className="space-y-0">
-            {displayed.length === 0 ? (
-              <p className="text-body-sm text-ash-gray py-8 text-center">No contributions here yet.</p>
-            ) : displayed.map((item, i) => (
-              <div key={i} className="flex items-center gap-4 py-4 border-b border-cool-gray/30 last:border-0">
-                <div className="w-8 h-8 rounded bg-factory-light-gray flex items-center justify-center text-factory-black text-caption font-mono shrink-0 border border-cool-gray/40">
-                  {item.project[0].toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-body-sm text-factory-black font-mono">{item.project}</p>
-                  <p className="text-caption text-ash-gray">{item.prs} PR{item.prs !== 1 ? 's' : ''} assisted</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-body-sm text-code-orange font-mono">{item.tokens.toLocaleString()} tokens</p>
-                  <p className="text-caption text-ash-gray">{item.date}</p>
+        {/* Two-column layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+          {/* LEFT — Contribution plan list + Badges */}
+          <div className="lg:col-span-2 space-y-5">
+            <div className="border border-cool-gray/40 rounded overflow-hidden">
+              <div className="px-4 py-3 border-b border-cool-gray/40 bg-faded-silver flex items-center justify-between">
+                <div className="flex gap-1">
+                  {[['history', 'History', history.length], ['plan', 'Ongoing', activePlans.length]].map(([tab, label, count]) => (
+                    <button
+                      key={tab}
+                      onClick={() => setPlanTab(tab)}
+                      className={`px-3 py-1 text-body-sm rounded transition-colors ${
+                        planTab === tab
+                          ? 'bg-factory-black text-faded-silver'
+                          : 'text-ash-gray hover:text-factory-black'
+                      }`}
+                    >
+                      {label}
+                      <span className={`ml-1.5 text-caption font-mono ${planTab === tab ? 'text-faded-silver/70' : 'text-cool-gray'}`}>
+                        {count}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </div>
-            ))}
+
+              {plansLoading ? (
+                <div className="bg-faded-silver p-4 space-y-2">
+                  {[1,2,3].map(i => <div key={i} className="h-14 bg-factory-light-gray rounded animate-pulse" />)}
+                </div>
+              ) : visiblePlans.length === 0 ? (
+                <div className="bg-faded-silver px-4 py-14 text-center">
+                  {planTab === 'plan' ? (
+                    <>
+                      <p className="text-body-sm text-factory-black mb-1">No active plans.</p>
+                      <p className="text-caption text-ash-gray mb-4">Start a contribution plan to see it here.</p>
+                      <Link to="/dashboard/marketplace" state={{ openFlow: true }}
+                        className="inline-block bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors">
+                        Start a Plan
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-body-sm text-factory-black mb-1">No completed contributions yet.</p>
+                      <p className="text-caption text-ash-gray">Completed contributions from your agents will appear here.</p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-faded-silver divide-y divide-cool-gray/30">
+                  {visiblePlans.map((plan) => (
+                    <div key={plan.id} className="flex items-start gap-3 px-4 py-3 hover:bg-factory-light-gray/50 transition-colors">
+                      <div className="w-7 h-7 rounded-full bg-factory-light-gray border border-cool-gray/40 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-sm">🍅</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-body-sm text-factory-black">{plan.name}</p>
+                        {plan.description && (
+                          <p className="text-caption text-ash-gray line-clamp-1 mt-0.5">{plan.description}</p>
+                        )}
+                        {plan.url && (
+                          <a href={plan.url} target="_blank" rel="noreferrer"
+                            className="text-caption text-code-orange hover:underline font-mono mt-0.5 block truncate">
+                            {extractRepo(plan.url) || plan.url}
+                          </a>
+                        )}
+                        {!plan.url && plan.github_repo && (
+                          <a href={`https://github.com/${plan.github_repo}`} target="_blank" rel="noreferrer"
+                            className="text-caption text-code-orange hover:underline font-mono mt-0.5 block truncate">
+                            {plan.github_repo}
+                          </a>
+                        )}
+                      </div>
+                      <span className="text-caption text-ash-gray shrink-0">{timeAgo(plan.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Badges */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-body text-factory-black">Badges</h2>
+                <span className="text-caption text-ash-gray font-mono">{earnedCount} / {badges.length} earned</span>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {badges.map((badge) => (
+                  <BadgeCard key={badge.id} badge={badge} size="sm" onClick={() => setSelectedBadge(badge)} />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT — Leaderboard */}
+          <div className="space-y-4">
+
+            {/* Top Contributors */}
+            <div className="border border-cool-gray/40 rounded overflow-hidden">
+              <div className="px-4 py-3 border-b border-cool-gray/40 bg-faded-silver">
+                <p className="text-body-sm text-factory-black">Top Contributors</p>
+              </div>
+              {loading ? (
+                <div className="bg-faded-silver p-4 space-y-2">
+                  {[1,2,3].map(i => <div key={i} className="h-8 bg-factory-light-gray rounded animate-pulse" />)}
+                </div>
+              ) : topUsers.length === 0 ? (
+                <div className="bg-faded-silver px-4 py-8 text-center">
+                  <p className="text-body-sm text-ash-gray">No contributors yet.</p>
+                </div>
+              ) : (
+                <div className="bg-faded-silver">
+                  {topUsers.length >= 1 && (
+                    <div className="flex items-end gap-1 px-3 pt-3 pb-0">
+                      <PodiumBlock user={podiumUsers[0]} rank={2} currentUsername={user?.username} />
+                      <PodiumBlock user={podiumUsers[1]} rank={1} currentUsername={user?.username} />
+                      <PodiumBlock user={podiumUsers[2]} rank={3} currentUsername={user?.username} />
+                    </div>
+                  )}
+                  {tableUsers.length > 0 && (
+                    <table className="w-full">
+                      <tbody className="divide-y divide-cool-gray/30">
+                        {tableUsers.map((u, i) => (
+                          <tr key={u.user_id}
+                            className={`transition-colors ${u.username === user?.username ? 'bg-factory-light-gray' : 'hover:bg-factory-light-gray/50'}`}>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-caption text-ash-gray font-mono w-5 text-right shrink-0">#{i + 4}</span>
+                                <span className="text-body-sm text-factory-black truncate">{u.name || u.username}</span>
+                                {u.username === user?.username && (
+                                  <span className="text-caption border border-cool-gray/40 rounded px-1.5 py-0.5 text-ash-gray shrink-0">you</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-body-sm font-mono text-factory-black text-right">{u.contributions}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Top Projects */}
+            <div className="border border-cool-gray/40 rounded overflow-hidden">
+              <div className="px-4 py-3 border-b border-cool-gray/40 bg-faded-silver">
+                <p className="text-body-sm text-factory-black">Top Projects</p>
+              </div>
+              {loading ? (
+                <div className="bg-faded-silver p-4 space-y-2">
+                  {[1,2,3].map(i => <div key={i} className="h-8 bg-factory-light-gray rounded animate-pulse" />)}
+                </div>
+              ) : topRepos.length === 0 ? (
+                <div className="bg-faded-silver px-4 py-8 text-center">
+                  <p className="text-body-sm text-ash-gray">No contributions recorded yet.</p>
+                </div>
+              ) : (
+                <table className="w-full bg-faded-silver">
+                  <tbody className="divide-y divide-cool-gray/30">
+                    {topRepos.map((repo, i) => (
+                      <tr key={repo.github_repo} className="hover:bg-factory-light-gray/50 transition-colors">
+                        <td className="px-3 py-2 text-center w-7">
+                          {i < 3
+                            ? <span className="text-sm">{MEDALS[i]}</span>
+                            : <span className="text-caption text-ash-gray font-mono">#{i+1}</span>}
+                        </td>
+                        <td className="px-2 py-2 text-caption font-mono text-factory-black truncate max-w-[120px]">
+                          {repo.github_repo || extractRepo(repo.github_repo_url)}
+                        </td>
+                        <td className="px-3 py-2 text-caption font-mono text-factory-black text-right">{repo.contributions}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </div>
       </div>
     </DashboardLayout>
+    {selectedBadge && (
+      <BadgeTiltCard badge={selectedBadge} contributions={totalContributions} onClose={() => setSelectedBadge(null)} />
+    )}
+    {shareProfileOpen && (
+      <ShareProfileCard
+        level={level}
+        totalContributions={totalContributions}
+        rankIndex={myRankIndex}
+        history={history}
+        onClose={() => setShareProfileOpen(false)}
+      />
+    )}
+    </>
   )
 }

@@ -1,13 +1,18 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { apiUrl } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function SignUp() {
-  const [form, setForm] = useState({ name: '', username: '', password: '', confirm: '' })
+  const [form, setForm] = useState({ name: '', username: '', email: '', password: '', confirm: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { signup } = useAuth()
   const navigate = useNavigate()
+
+  const handleGitHubLogin = () => {
+    window.location.assign(apiUrl('/oauth/github'))
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -16,10 +21,10 @@ export default function SignUp() {
     if (form.password.length < 6) { setError('Password must be at least 6 characters'); return }
     setLoading(true)
     try {
-      await signup(form.name, form.username, form.password)
+      await signup(form.name, form.username, form.email, form.password)
       navigate('/onboarding/agent-setup')
     } catch (err) {
-      const msg = err.response?.data?.error || 'Could not create account'
+      const msg = err.message || err.response?.data?.error || 'Could not create account'
       setError(msg.includes('UNIQUE') ? 'Username already taken' : msg)
     } finally {
       setLoading(false)
@@ -49,6 +54,7 @@ export default function SignUp() {
             {[
               { id: 'name',     label: 'Full name',       type: 'text',     ph: 'Jane Smith',  ac: 'name'         },
               { id: 'username', label: 'Username',         type: 'text',     ph: 'jane-smith',  ac: 'username'     },
+              { id: 'email',    label: 'Email',            type: 'email',    ph: 'jane@example.com', ac: 'email'   },
               { id: 'password', label: 'Password',         type: 'password', ph: '••••••••',    ac: 'new-password' },
               { id: 'confirm',  label: 'Confirm password', type: 'password', ph: '••••••••',    ac: 'new-password' },
             ].map(({ id, label, type, ph, ac }) => (
@@ -65,6 +71,16 @@ export default function SignUp() {
               By signing up you agree to our <Link to="/terms" className="hover:underline">Terms</Link> and <Link to="/privacy" className="hover:underline">Privacy Policy</Link>.
             </p>
           </form>
+
+          <div className="flex items-center gap-3 my-5">
+            <div className="h-px flex-1 bg-cool-gray/40" />
+            <span className="text-caption text-ash-gray">or</span>
+            <div className="h-px flex-1 bg-cool-gray/40" />
+          </div>
+
+          <button type="button" onClick={handleGitHubLogin} className="btn-outline w-full justify-center py-2 text-body-sm">
+            Continue with GitHub
+          </button>
         </div>
       </div>
     </div>

@@ -16,7 +16,7 @@ export default function Footer() {
             {
               label: 'Platform',
               links: [
-                { to: '/projects', label: 'Browse Projects' },
+                { to: '/dashboard/marketplace', label: 'Browse GitHub Repos' },
                 { to: '/#leaderboard', label: 'Leaderboard' },
                 { to: '/dashboard', label: 'Dashboard' },
               ],

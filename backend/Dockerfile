@@ -2,7 +2,6 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV DATABASE_PATH=/data/opensauce.db
 
 WORKDIR /app
 
@@ -11,9 +10,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src ./src
 COPY wsgi.py .
-
-RUN mkdir -p /data
+COPY gunicorn.conf.py .
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "wsgi:app"]
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "wsgi:app"]
