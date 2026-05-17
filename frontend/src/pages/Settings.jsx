@@ -68,7 +68,7 @@ export default function Settings() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <div className="p-4 sm:p-8">
         <div className="mb-8">
           <h1 className="text-heading font-normal text-factory-black">Settings</h1>
           <p className="text-body-sm text-graphite mt-1">Manage your profile, keys, and integrations.</p>

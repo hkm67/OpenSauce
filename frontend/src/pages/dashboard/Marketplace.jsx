@@ -60,16 +60,16 @@ export default function Marketplace() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <div className="p-4 sm:p-8">
         {/* Header row */}
-        <div className="flex items-start justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-6">
           <div>
             <h1 className="text-heading font-normal text-factory-black">GitHub Marketplace</h1>
             <p className="text-body-sm text-graphite mt-1">Search public GitHub repositories and start a contribution.</p>
           </div>
           <button
             onClick={() => setShowFlow(true)}
-            className="shrink-0 bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors"
+            className="shrink-0 self-start bg-factory-black text-faded-silver px-4 py-2 text-body-sm rounded hover:bg-factory-black/80 transition-colors"
           >
             Start Contribution
           </button>

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Download, Loader2, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import html2canvas from 'html2canvas'
@@ -54,6 +54,28 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
     setHovered(false)
   }
 
+  useEffect(() => {
+    const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
+    if (!isTouchDevice) return
+
+    const applyOrientation = (e) => {
+      const gamma = Math.max(-45, Math.min(45, e.gamma || 0))
+      const beta  = Math.max(-45, Math.min(45, (e.beta || 0) - 45))
+      setTilt({ x: (beta / 45) * 12, y: (gamma / 45) * -12, rx: 0.5, ry: 0.5 })
+      setHovered(true)
+    }
+
+    const start = async () => {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try { await DeviceOrientationEvent.requestPermission() } catch { return }
+      }
+      window.addEventListener('deviceorientation', applyOrientation)
+    }
+
+    start()
+    return () => window.removeEventListener('deviceorientation', applyOrientation)
+  }, [])
+
   const shadowX = tilt.y * 0.6
   const shadowY = tilt.x * 0.6
   const shadowBlur = 50 + Math.abs(tilt.x + tilt.y) * 0.5
@@ -97,7 +119,7 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-16 p-6 overflow-hidden"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 md:gap-16 p-6 overflow-hidden"
       style={{ backgroundColor: 'rgba(9,9,11,0.88)' }}
       onClick={onClose}
     >
@@ -133,14 +155,14 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
       >
         {/* ── LEFT — Key Visual ── */}
         <div
-          className="badge-cert-left relative overflow-hidden rounded-xl"
+          className="badge-cert-left relative overflow-hidden rounded-xl flex items-center justify-center"
           style={{ backgroundColor: '#fff' }}
         >
           <img
             src={awardImage}
             alt={badge.name}
             crossOrigin="anonymous"
-            className="w-full h-full object-cover"
+            className="w-full object-contain object-center"
             style={badge.earned ? {} : { filter: 'grayscale(1) brightness(0.85)' }}
           />
 
@@ -184,10 +206,12 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
                 <p className="text-body-sm text-[#6b6460] leading-relaxed mb-3">
                   Thank you for volunteering with OpenSauce.
                 </p>
-                <p className="text-body-sm text-[#6b6460] leading-relaxed mb-4">
+                <p className="text-body-sm text-[#6b6460] leading-relaxed mb-1">
                   You've earned the{' '}
-                  <span className="font-serif font-semibold text-[#3d3a39]">{badge.name}</span> badge —{' '}
-                  <span className="italic">{badge.description}</span>
+                  <span className="font-serif font-semibold text-[#3d3a39]">{badge.name}</span> badge —
+                </p>
+                <p className="text-body-sm text-[#6b6460] italic leading-relaxed mb-4">
+                  {badge.description}
                 </p>
 
                 {/* Progress bar */}

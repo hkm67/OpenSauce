@@ -4,6 +4,7 @@ import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import ProjectCard from '../components/ProjectCard'
 import { searchGithubRepos } from '../api/github'
+import { useAuth } from '../contexts/AuthContext'
 
 const LEADERBOARD = [
   { rank: 1, name: '@devhero42',      tokens: '2.4M', projects: 18 },
@@ -21,6 +22,9 @@ const HOW_IT_WORKS = [
 ]
 
 export default function Home() {
+  const { isAuthenticated } = useAuth()
+  const ctaTo = isAuthenticated ? '/dashboard/marketplace' : '/signup'
+  const ctaState = isAuthenticated ? { openFlow: true } : undefined
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -49,7 +53,7 @@ export default function Home() {
             </p>
 
             <div className="flex flex-wrap items-center gap-3">
-              <Link to="/signup" className="btn-primary px-4 py-2">
+              <Link to={ctaTo} state={ctaState} className="btn-primary px-4 py-2">
                 Start Volunteer
               </Link>
               <Link to="/dashboard/marketplace" className="btn-outline px-4 py-2">
@@ -141,7 +145,7 @@ export default function Home() {
           ) : projects.length === 0 ? (
             <div className="card py-16 text-center">
               <p className="text-body text-graphite mb-4">No repositories found.</p>
-              <Link to="/signup" className="btn-primary">Start volunteering</Link>
+              <Link to={ctaTo} state={ctaState} className="btn-primary">Start volunteering</Link>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -191,10 +195,10 @@ export default function Home() {
             <h2 className="text-heading-lg font-normal text-faded-silver mb-6" style={{ letterSpacing: '-2.3px' }}>
               Built for the open source economy.
             </h2>
-            <p className="text-body text-cool-gray mb-4">
+            <p className="text-body text-faded-silver mb-4">
               AI agents consume millions of tokens daily. Most of them sit idle between tasks. OpenSauce turns that waste into fuel for the open source projects — compilers, frameworks, libraries — that make AI development possible.
             </p>
-            <p className="text-body text-graphite">
+            <p className="text-body text-faded-silver/70">
               We believe the organizations benefiting most from open source should be the ones giving back — automatically, transparently, at scale.
             </p>
           </div>
