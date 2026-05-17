@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Download, Loader2, X } from 'lucide-react'
+import { Download, Loader2, Share2, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import html2canvas from 'html2canvas'
 
@@ -39,6 +39,8 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
   const [hovered, setHovered] = useState(false)
   const [capturing, setCapturing] = useState(false)
   const cardRef = useRef(null)
+  const shareCardRef = useRef(null)
+  const isDragging = useRef(false)
 
   const handleMouseMove = (e) => {
     if (!cardRef.current) return
@@ -54,11 +56,27 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
     setHovered(false)
   }
 
+  const handleTouchMove = (e) => {
+    if (!cardRef.current) return
+    isDragging.current = true
+    const touch = e.touches[0]
+    const rect = cardRef.current.getBoundingClientRect()
+    const rx = (touch.clientX - rect.left) / rect.width
+    const ry = (touch.clientY - rect.top) / rect.height
+    setTilt({ x: (ry - 0.5) * 18, y: (rx - 0.5) * -18, rx, ry })
+    setHovered(true)
+  }
+
+  const handleTouchEnd = () => {
+    isDragging.current = false
+  }
+
   useEffect(() => {
     const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
     if (!isTouchDevice) return
 
     const applyOrientation = (e) => {
+      if (isDragging.current) return
       const gamma = Math.max(-45, Math.min(45, e.gamma || 0))
       const beta  = Math.max(-45, Math.min(45, (e.beta || 0) - 45))
       setTilt({ x: (beta / 45) * 12, y: (gamma / 45) * -12, rx: 0.5, ry: 0.5 })
@@ -84,14 +102,23 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
     e.stopPropagation()
     setCapturing(true)
     try {
-      const canvas = await captureElement(cardRef.current)
+      const isMobile = window.matchMedia('(pointer: coarse)').matches
+      const target = isMobile && shareCardRef.current ? shareCardRef.current : cardRef.current
+      const canvas = await captureElement(target)
       const file = await toFile(canvas, `${badge.name}-badge`)
       if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: `I earned the "${badge.name}" badge!`, text: badge.description })
+        await navigator.share({ files: [file], title: `I earned the "${badge.name}" badge on OpenSauce!`, text: badge.description })
         return
       }
-    } catch { /* fall through */ } finally { setCapturing(false) }
-    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.href)}`, '_blank', 'noopener')
+      // Fallback: download image
+      const a = document.createElement('a')
+      a.download = `${badge.name}-badge.png`
+      a.href = canvas.toDataURL('image/png')
+      a.click()
+    } catch { /* user cancelled */ } finally { setCapturing(false) }
+    if (!window.matchMedia('(pointer: coarse)').matches) {
+      window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.href)}`, '_blank', 'noopener')
+    }
   }
 
   const handleInstagram = async (e) => {
@@ -143,8 +170,10 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
         onMouseMove={handleMouseMove}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         onClick={(e) => e.stopPropagation()}
-        className="badge-tilt-card relative z-10 flex flex-col md:grid md:grid-cols-[55%_1fr] overflow-hidden rounded-2xl w-[90vw] min-w-[320px] md:w-[60vw] md:min-w-[760px] md:max-w-[1200px] p-[10px] gap-[10px]"
+        className="badge-tilt-card relative z-10 flex flex-col md:grid md:grid-cols-[55%_1fr] overflow-hidden rounded-2xl w-[70vw] min-w-[280px] md:w-[60vw] md:min-w-[760px] md:max-w-[1200px] p-[10px] gap-[10px]"
         style={{
           '--ratio-x': tilt.rx,
           '--ratio-y': tilt.ry,
@@ -181,7 +210,7 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
 
         {/* ── RIGHT — Certificate Letter ── */}
         <div
-          className={`badge-cert-right flex flex-col p-6 rounded-xl ${badge.earned ? 'justify-between' : 'justify-center'}`}
+          className={`badge-cert-right flex flex-col p-3 md:p-6 rounded-xl ${badge.earned ? 'justify-between' : 'justify-center'}`}
           style={{ backgroundColor: '#fdf8f0' }}
         >
           {badge.earned ? (
@@ -189,7 +218,7 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
               {/* Header */}
               <div>
                 <div className="mb-3">
-                  <p className="text-xs tracking-[0.2em] uppercase text-[#a49d9a] font-mono">
+                  <p className="text-[9px] md:text-xs tracking-[0.2em] uppercase text-[#a49d9a] font-mono">
                     OpenSauce ·<br />Certificate of Achievement
                   </p>
                   <div className="mt-1 flex items-center gap-2">
@@ -200,41 +229,45 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
                 </div>
 
                 {/* Letter body */}
-                <p className="text-base text-[#3d3a39] mb-3">
-                  Dear <span className="font-serif font-semibold text-lg">{displayName}</span>,
+                <p className="text-sm md:text-base text-[#3d3a39] mb-2 md:mb-3">
+                  Dear <span className="font-serif font-semibold text-base md:text-lg">{displayName}</span>,
                 </p>
-                <p className="text-body-sm text-[#6b6460] leading-relaxed mb-3">
+                <p className="text-xs md:text-body-sm text-[#6b6460] leading-relaxed mb-2 md:mb-3">
                   Thank you for volunteering with OpenSauce.
                 </p>
-                <p className="text-body-sm text-[#6b6460] leading-relaxed mb-1">
+                <p className="text-xs md:text-body-sm text-[#6b6460] leading-relaxed mb-1">
                   You've earned the{' '}
                   <span className="font-serif font-semibold text-[#3d3a39]">{badge.name}</span> badge —
                 </p>
-                <p className="text-body-sm text-[#6b6460] italic leading-relaxed mb-4">
+                <p className="text-xs md:text-body-sm text-[#6b6460] italic leading-relaxed mb-3 md:mb-4">
                   {badge.description}
                 </p>
 
-                {/* Progress bar */}
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-xs font-mono text-[#a49d9a] uppercase tracking-wider">Progress</span>
-                  <span className="text-xs font-mono text-[#3d3a39]">
-                    {Math.min(contributions, badge.threshold)} / {badge.threshold}
-                  </span>
-                </div>
-                <div className="h-2 rounded-full overflow-hidden mb-1.5" style={{ backgroundColor: '#e8e2da' }}>
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(100, Math.round((contributions / badge.threshold) * 100))}%`, backgroundColor: '#FF6347' }}
-                  />
-                </div>
+                {/* Progress bar — hidden for threshold-0 badges */}
+                {badge.threshold > 0 && (
+                  <>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-xs font-mono text-[#a49d9a] uppercase tracking-wider">Progress</span>
+                      <span className="text-xs font-mono text-[#3d3a39]">
+                        {Math.min(contributions, badge.threshold)} / {badge.threshold}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden mb-1.5" style={{ backgroundColor: '#e8e2da' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, Math.round((contributions / badge.threshold) * 100))}%`, backgroundColor: '#FF6347' }}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Footer — signature */}
-              <div className="border-t pt-3" style={{ borderColor: '#e8e2da' }}>
-                <div className="flex items-end justify-between mt-3">
+              <div className="border-t pt-3 md:pt-4" style={{ borderColor: '#e8e2da' }}>
+                <div className="flex items-end justify-between mt-0 md:mt-3">
                   <div>
-                    <p className="text-xs text-[#a49d9a] font-mono mb-0.5">Awarded on {AWARDED_DATE}</p>
-                    <p className="text-base font-semibold text-[#3d3a39] tracking-wide">OpenSauce</p>
+                    <p className="text-[9px] md:text-xs text-[#a49d9a] font-mono mb-0.5">Awarded on {AWARDED_DATE}</p>
+                    <p className="text-sm md:text-base font-semibold text-[#3d3a39] tracking-wide">OpenSauce</p>
                     <div className="mt-1 w-16 h-px" style={{ backgroundColor: '#3d3a39' }} />
                   </div>
                 </div>
@@ -244,10 +277,10 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
             /* Unearned — progress only */
             <div className="flex flex-col justify-center gap-3 flex-1">
               <div>
-                <p className="font-serif font-semibold text-xl text-[#3d3a39] mb-1">{badge.name}</p>
-                <p className="text-body-sm text-[#6b6460] italic">{badge.description}</p>
+                <p className="font-serif font-semibold text-base md:text-xl text-[#3d3a39] mb-1">{badge.name}</p>
+                <p className="text-xs md:text-body-sm text-[#6b6460] italic">{badge.description}</p>
               </div>
-              <div>
+              {badge.threshold > 0 && <div>
                 <div className="mb-1.5 flex items-center justify-between">
                   <span className="text-xs font-mono text-[#a49d9a] uppercase tracking-wider">Progress</span>
                   <span className="text-xs font-mono text-[#3d3a39]">
@@ -260,7 +293,7 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
                     style={{ width: `${Math.min(100, Math.round((contributions / badge.threshold) * 100))}%`, backgroundColor: '#a49d9a' }}
                   />
                 </div>
-              </div>
+              </div>}
             </div>
           )}
         </div>
@@ -271,13 +304,58 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
         <button
           onClick={handleLinkedIn}
           disabled={capturing}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-50"
-          style={{ backgroundColor: '#0A66C2' }}
+          className="btn-outline flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50 !text-white !border-white/60 hover:!border-white"
+          style={{}}
         >
-          {capturing ? <Loader2 className="w-4 h-4 animate-spin" /> : <LinkedinIcon className="w-4 h-4" />}
-          Share on LinkedIn
+          {capturing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+          <span className="md:hidden">Share</span>
+          <span className="hidden md:inline">Share on LinkedIn</span>
         </button>
       </div>}
+
+      {/* Hidden off-screen desktop card used for mobile share image capture */}
+      <div
+        ref={shareCardRef}
+        style={{
+          position: 'fixed', left: '-9999px', top: 0,
+          width: '800px', display: 'flex', flexDirection: 'row',
+          borderRadius: '16px', padding: '10px', gap: '10px',
+          background: 'linear-gradient(45deg, #75e4ee, #f85fbe)',
+          pointerEvents: 'none', zIndex: -1,
+        }}
+      >
+        {/* Left image */}
+        <div style={{ width: '55%', aspectRatio: '1/1', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#fff', flexShrink: 0 }}>
+          <img src={awardImage} alt={badge.name} crossOrigin="anonymous"
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        </div>
+        {/* Right certificate */}
+        <div style={{ flex: 1, backgroundColor: '#fdf8f0', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: badge.earned ? 'space-between' : 'center' }}>
+          <div>
+            <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#a49d9a', fontFamily: 'monospace', marginBottom: '8px' }}>
+              OpenSauce · Certificate of Achievement
+            </p>
+            <div style={{ height: '1px', backgroundColor: '#d4cfc9', marginBottom: '16px' }} />
+            <p style={{ fontSize: '16px', color: '#3d3a39', marginBottom: '12px' }}>
+              Dear <strong style={{ fontFamily: 'serif', fontSize: '18px' }}>{displayName}</strong>,
+            </p>
+            <p style={{ fontSize: '14px', color: '#6b6460', marginBottom: '10px' }}>Thank you for volunteering with OpenSauce.</p>
+            <p style={{ fontSize: '14px', color: '#6b6460', marginBottom: '4px' }}>
+              You've earned the <strong style={{ fontFamily: 'serif', color: '#3d3a39' }}>{badge.name}</strong> badge —
+            </p>
+            <p style={{ fontSize: '14px', color: '#6b6460', fontStyle: 'italic', marginBottom: '16px' }}>{badge.description}</p>
+            <p style={{ fontSize: '11px', fontFamily: 'monospace', color: '#a49d9a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>Progress</p>
+            <div style={{ height: '8px', borderRadius: '9999px', backgroundColor: '#e8e2da', overflow: 'hidden' }}>
+              <div style={{ height: '100%', borderRadius: '9999px', backgroundColor: '#FF6347', width: `${Math.min(100, Math.round((contributions / badge.threshold) * 100))}%` }} />
+            </div>
+          </div>
+          <div style={{ borderTop: '1px solid #e8e2da', paddingTop: '16px', marginTop: '16px' }}>
+            <p style={{ fontSize: '11px', color: '#a49d9a', fontFamily: 'monospace', marginBottom: '4px' }}>Awarded on {AWARDED_DATE}</p>
+            <p style={{ fontSize: '16px', fontWeight: '600', color: '#3d3a39', letterSpacing: '0.05em' }}>OpenSauce</p>
+            <div style={{ marginTop: '4px', width: '64px', height: '1px', backgroundColor: '#3d3a39' }} />
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

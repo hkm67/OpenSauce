@@ -117,21 +117,28 @@ export default function PixelCanvas({ colors = ['#75e4ee', '#f85fbe', '#ffffff']
 
     resize()
 
+    const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
+    const shouldAutoPlay = autoPlay || isTouchDevice
+
     const parent = canvas.parentElement
     const onEnter = () => handleAnimation('appear')
     const onLeave = () => handleAnimation('disappear')
 
-    parent?.addEventListener('mouseenter', onEnter)
-    parent?.addEventListener('mouseleave', onLeave)
+    if (!isTouchDevice) {
+      parent?.addEventListener('mouseenter', onEnter)
+      parent?.addEventListener('mouseleave', onLeave)
+    }
 
-    if (autoPlay) handleAnimation('appear')
+    if (shouldAutoPlay) handleAnimation('appear')
 
-    const ro = new ResizeObserver(() => { resize(); if (autoPlay) handleAnimation('appear') })
+    const ro = new ResizeObserver(() => { resize(); if (shouldAutoPlay) handleAnimation('appear') })
     ro.observe(canvas.parentElement)
 
     return () => {
-      parent?.removeEventListener('mouseenter', onEnter)
-      parent?.removeEventListener('mouseleave', onLeave)
+      if (!isTouchDevice) {
+        parent?.removeEventListener('mouseenter', onEnter)
+        parent?.removeEventListener('mouseleave', onLeave)
+      }
       if (state.animation) cancelAnimationFrame(state.animation)
       ro.disconnect()
     }
