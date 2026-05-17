@@ -210,16 +210,16 @@
 
 @media (min-width: 768px) {
   .badge-cert-left {
-    width: auto;
-    height: auto;
-    flex: 0 0 60%;
+    width: 100%;
+    max-height: none;
     aspect-ratio: unset;
+    align-self: stretch;
   }
 
   .badge-cert-right {
-    flex: 1 1 0;
     width: auto;
     min-width: 0;
+    align-self: stretch;
   }
 }
 

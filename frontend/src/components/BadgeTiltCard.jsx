@@ -144,7 +144,7 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onClick={(e) => e.stopPropagation()}
-        className="badge-tilt-card relative z-10 flex flex-col md:flex-row overflow-hidden rounded-2xl items-stretch w-[90vw] min-w-[320px] md:w-[60vw] md:min-w-[760px] md:max-w-[1200px] p-[10px] gap-[10px]"
+        className="badge-tilt-card relative z-10 flex flex-col md:grid md:grid-cols-[55%_1fr] overflow-hidden rounded-2xl w-[90vw] min-w-[320px] md:w-[60vw] md:min-w-[760px] md:max-w-[1200px] p-[10px] gap-[10px]"
         style={{
           '--ratio-x': tilt.rx,
           '--ratio-y': tilt.ry,
@@ -162,7 +162,7 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
             src={awardImage}
             alt={badge.name}
             crossOrigin="anonymous"
-            className="w-full object-contain object-center"
+            className="w-full h-full object-cover object-center"
             style={badge.earned ? {} : { filter: 'grayscale(1) brightness(0.85)' }}
           />
 
@@ -181,7 +181,7 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
 
         {/* ── RIGHT — Certificate Letter ── */}
         <div
-          className="badge-cert-right flex flex-col justify-between p-6 rounded-xl"
+          className={`badge-cert-right flex flex-col p-6 rounded-xl ${badge.earned ? 'justify-between' : 'justify-center'}`}
           style={{ backgroundColor: '#fdf8f0' }}
         >
           {badge.earned ? (
@@ -242,7 +242,7 @@ export default function BadgeTiltCard({ badge, contributions = 0, onClose }) {
             </>
           ) : (
             /* Unearned — progress only */
-            <div className="flex flex-col justify-center h-full gap-3">
+            <div className="flex flex-col justify-center gap-3 flex-1">
               <div>
                 <p className="font-serif font-semibold text-xl text-[#3d3a39] mb-1">{badge.name}</p>
                 <p className="text-body-sm text-[#6b6460] italic">{badge.description}</p>
